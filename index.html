@@ -385,6 +385,20 @@
     .scene { perspective: 2500px; width: min(44vw, 420px); height: min(62vw, 580px); transition: transform 0.8s cubic-bezier(0.4, 0, 0.2, 1); will-change: transform;
     }
     .scene.is-open { transform: translateX(min(22vw, 210px)) translateZ(0); }
+
+    @media (max-width: 600px) {
+      .scene { width: 44vw; height: 68vw; perspective: 2000px; }
+      .scene.is-open { transform: translateX(22vw); }
+      .cover-title { font-size: 1.8rem; }
+      .upload-title { font-size: 1.6rem; }
+      .upload-box { padding: 40px 20px; }
+      .top-bar { top: 10px; right: 10px; gap: 8px; }
+      .icon-btn { width: 40px; height: 40px; font-size: 18px; }
+      #editorPanel { width: calc(100% - 20px); right: 10px; top: 60px; padding: 16px; }
+      .photo-container img { border-width: 4px; }
+      .caption { font-size: 0.8rem; min-height: 40px; padding: 0 10px; }
+      .content-box { padding: 15px 10px; }
+    }
     .book { width: 100%; height: 100%; position: relative; transform-style: preserve-3d; -webkit-transform-style: preserve-3d; will-change: transform;
     }
     .page.is-turning { z-index: 101 !important; }
@@ -621,10 +635,10 @@
         const webp = photo.srcWebp ? String(photo.srcWebp) : '';
 
         if (webp) {
-          return `<div class="photo-container"><picture><source type="image/webp" data-srcset="${webp}"><img class="album-photo" src="${IMG_PLACEHOLDER}" data-src="${src}" loading="lazy" decoding="async" alt=""></picture></div>`;
+          return `<div class="photo-container"><picture><source type="image/webp" data-srcset="${webp}"><img class="album-photo" src="${IMG_PLACEHOLDER}" data-src="${src}" alt=""></picture></div>`;
         }
 
-        return `<div class="photo-container"><img class="album-photo" src="${IMG_PLACEHOLDER}" data-src="${src}" loading="lazy" decoding="async" alt=""></div>`;
+        return `<div class="photo-container"><img class="album-photo" src="${IMG_PLACEHOLDER}" data-src="${src}" alt=""></div>`;
       }
 
       function loadImageOnce(img) {
@@ -643,28 +657,46 @@
         }
 
         // Keep DOM node stable: only set src ONCE, never touch it again.
+        if (img.complete) {
+          img.classList.add('is-loaded');
+        } else {
+          img.onload = () => img.classList.add('is-loaded');
+          img.onerror = () => {
+             console.warn('[Album] Image load failed:', real);
+             img.style.opacity = '0.5'; // Show something failed
+          };
+        }
         img.src = real;
         img.dataset.loaded = '1';
         img.removeAttribute('data-src');
-        img.classList.add('is-loaded');
       }
 
-      function loadImagesForPageIndex(pageIndex) {
+      function loadImagesForPageIndex(pageIndex, loadBoth = false) {
         const pageEls = document.querySelectorAll('.book .page');
         const pageEl = pageEls[pageIndex];
         if (!pageEl) return;
-        const isFlipped = pageEl.classList.contains('flipped');
-        const sideSelector = isFlipped ? '.page-back' : '.page-front';
-        const imgs = pageEl.querySelectorAll(`${sideSelector} img[data-src]`);
-        imgs.forEach(loadImageOnce);
+        
+        if (loadBoth) {
+          const imgs = pageEl.querySelectorAll('img[data-src]');
+          imgs.forEach(loadImageOnce);
+        } else {
+          const isFlipped = pageEl.classList.contains('flipped');
+          const sideSelector = isFlipped ? '.page-back' : '.page-front';
+          const imgs = pageEl.querySelectorAll(`${sideSelector} img[data-src]`);
+          imgs.forEach(loadImageOnce);
+        }
       }
 
       function loadImagesAroundCurrentPage() {
-        // The 3D book stacks all pages in the viewport; IntersectionObserver is ineffective.
-        // Instead, load only the currently visible side + near pages.
-        loadImagesForPageIndex(currentPage - 1);
-        loadImagesForPageIndex(currentPage);
-        loadImagesForPageIndex(currentPage + 1);
+        // Load the visible sides of current and adjacent pages
+        loadImagesForPageIndex(currentPage - 1, true); // prev page both sides (for back)
+        loadImagesForPageIndex(currentPage, true);     // current page both sides (for flip)
+        loadImagesForPageIndex(currentPage + 1, true); // next page both sides (for prefetch)
+        
+        // Prefetch a bit further
+        for (let i = 2; i <= 5; i++) {
+          loadImagesForPageIndex(currentPage + i, false);
+        }
       }
 
       // localStorage management
