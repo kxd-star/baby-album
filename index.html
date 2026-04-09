@@ -399,6 +399,25 @@
       .caption { font-size: 0.8rem; min-height: 40px; padding: 0 10px; }
       .content-box { padding: 15px 10px; }
     }
+
+    /* ── Mobile Landscape Support ── */
+    @media (max-width: 950px) and (orientation: landscape) {
+      .scene-wrapper { height: 82vh; }
+      .scene { width: 38vh; height: 54vh; perspective: 2000px; }
+      .scene.is-open { transform: translateX(19vh); }
+      .cover-title { font-size: 1.8rem; }
+      .upload-title { font-size: 1.4rem; }
+      .upload-box { padding: 20px; width: 80%; }
+      .upload-icon { font-size: 40px; margin-bottom: 10px; }
+      .upload-hint { margin-bottom: 15px; font-size: 0.9rem; }
+      .top-bar { top: 10px; right: 10px; gap: 6px; }
+      .icon-btn { width: 36px; height: 36px; font-size: 16px; }
+      #editorPanel { width: 280px; top: 50px; padding: 15px; }
+      .footer { margin-top: 5px; gap: 10px; }
+      .nav-btn { padding: 8px 20px; font-size: 0.9rem; }
+      .caption { font-size: 0.75rem; min-height: 35px; }
+      .content-box { padding: 10px; }
+    }
     .book { width: 100%; height: 100%; position: relative; transform-style: preserve-3d; -webkit-transform-style: preserve-3d; will-change: transform;
     }
     .page.is-turning { z-index: 101 !important; }
