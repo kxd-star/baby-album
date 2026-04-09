@@ -382,13 +382,22 @@
     .scene-wrapper {
       width: 100vw; height: 75vh; display: flex; align-items: center; justify-content: center; position: relative;
     }
-    .scene { perspective: 2500px; width: min(44vw, 420px); height: min(62vw, 580px); transition: transform 0.8s cubic-bezier(0.4, 0, 0.2, 1); will-change: transform;
+    .scene, .magazine {
+      perspective: 2500px;
+      width: min(44vw, 420px);
+      height: min(62vw, 580px);
+      --scene-shift: 0px;
+      --scene-scale: 1;
+      transform: translateX(var(--scene-shift)) scale(var(--scene-scale)) translateZ(0);
+      transform-origin: center;
+      transition: transform 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+      will-change: transform;
     }
-    .scene.is-open { transform: translateX(min(22vw, 210px)) translateZ(0); }
+    .scene.is-open, .magazine.is-open { --scene-shift: min(22vw, 210px); }
 
     @media (max-width: 600px) {
-      .scene { width: 44vw; height: 68vw; perspective: 2000px; }
-      .scene.is-open { transform: translateX(22vw); }
+      .scene, .magazine { width: 44vw; height: 68vw; perspective: 2000px; }
+      .scene.is-open, .magazine.is-open { --scene-shift: 22vw; }
       .cover-title { font-size: 1.8rem; }
       .upload-title { font-size: 1.6rem; }
       .upload-box { padding: 40px 20px; }
@@ -402,9 +411,19 @@
 
     /* ── Mobile Landscape Support ── */
     @media (max-width: 950px) and (orientation: landscape) {
-      .scene-wrapper { height: 82vh; }
-      .scene { width: 38vh; height: 54vh; perspective: 2000px; }
-      .scene.is-open { transform: translateX(19vh); }
+      /* iOS 横屏 + 3D 翻页：通过缩放确保整体不被裁剪 */
+      .scene-wrapper {
+        height: 100vh;
+        padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+      }
+      .scene, .magazine {
+        width: min(38vh, 92vw);
+        height: min(54vh, 92vh);
+        perspective: 2000px;
+        /* 关闭/打开时的总横向占用约为 (width + shift) ≈ 57vh；据此按视口宽度自适应缩放 */
+        --scene-scale: min(1, calc((100vw - 24px) / 57vh));
+      }
+      .scene.is-open, .magazine.is-open { --scene-shift: 19vh; }
       .cover-title { font-size: 1.8rem; }
       .upload-title { font-size: 1.4rem; }
       .upload-box { padding: 20px; width: 80%; }
@@ -452,7 +471,6 @@
       position: relative; background: rgba(255,255,255,0.3); border-radius: 12px; margin-bottom: 18px; overflow: hidden;
     }
     .photo-container img { width: 92%; height: auto; max-height: 92%; object-fit: contain; border: 8px solid white; box-shadow: 0 8px 25px var(--shadow); }
-    /* Lazy-loaded photos: keep nodes stable, only fade in when real src is set */
     .photo-container img.album-photo { opacity: 1; }
     .caption { font-size: 1rem; text-align: center; font-weight: 700; color: var(--text); min-height: 50px; display: flex; align-items: center; }
 
@@ -579,7 +597,7 @@
     </div>
 
     <div class="scene-wrapper hidden" id="albumMain">
-      <div class="scene" id="scene">
+      <div class="scene magazine" id="scene">
         <div class="book" id="book">
           <!-- Dynamic Generated Content -->
         </div>
@@ -642,11 +660,8 @@
       let pages = [];
       let albumType = 'default';
 
-      // --- Photo DOM stability & mobile reliability ---
-      // Mobile + 3D flipbook + lazy-loading is fragile across iOS Safari.
-      // For reliability, we default to standard eager <img src> / <source srcset>.
-      // (Still keep a tiny helper to “force load” around the current page in case some browser
-      // delays decode while the element is being transformed.)
+      // --- Photo load policy ---
+      // 移动端（尤其 iOS + 3D 翻页）对懒加载非常敏感：统一使用最简单的 <img src> 直接加载。
       let albumGeneratedOnce = false;
 
       function buildPhotoMarkup(photo) {
@@ -659,37 +674,6 @@
         }
 
         return `<div class="photo-container"><img class="album-photo" src="${src}" alt="" loading="eager" decoding="async"></div>`;
-      }
-
-      function loadImageOnce(img) {
-        // Backward-compatible: if any old nodes still use data-src, promote them.
-        if (!img) return;
-        const real = img.dataset ? img.dataset.src : '';
-        if (!real) return;
-
-        const pic = img.closest && img.closest('picture');
-        if (pic) {
-          const srcEl = pic.querySelector && pic.querySelector('source[data-srcset]');
-          if (srcEl && srcEl.dataset && srcEl.dataset.srcset) {
-            srcEl.srcset = srcEl.dataset.srcset;
-            srcEl.removeAttribute('data-srcset');
-          }
-        }
-
-        img.src = real;
-        img.removeAttribute('data-src');
-      }
-
-      function loadImagesAroundCurrentPage() {
-        // Force-promote any remaining data-src images around current page
-        const pageElements = Array.from(document.querySelectorAll('.book .page'));
-        const idxs = [currentPage - 1, currentPage, currentPage + 1, currentPage + 2, currentPage + 3];
-        idxs.forEach(i => {
-          const pageEl = pageElements[i];
-          if (!pageEl) return;
-          const imgs = pageEl.querySelectorAll('img[data-src]');
-          imgs.forEach(loadImageOnce);
-        });
       }
 
       // localStorage management
@@ -903,7 +887,7 @@
         bgm.preload = 'none';
         bgm.src = currentTrack;
 
-        // 若是内置相册，先生成 DOM（图片仍是 data-src，不会一次性拉满）
+        // 若是内置相册，先生成 DOM（图片使用 src 直接加载）
         if (albumType === 'baby' || albumType === 'wedding') {
           checkUrlParams();
         }
@@ -965,7 +949,6 @@
         document.getElementById('pageInfo').innerText = `${currentPage + 1} / ${total}`;
         document.getElementById('scene').classList.toggle('is-open', currentPage > 0);
 
-        loadImagesAroundCurrentPage();
       }
 
       function generateAlbum(photoData, title = "我们的回忆录") {
