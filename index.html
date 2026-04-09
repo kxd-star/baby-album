@@ -267,6 +267,13 @@
     body.ready #appShell { opacity: 1; visibility: visible; }
     body.ready #loadingOverlay { opacity: 0; visibility: hidden; pointer-events: none; }
 
+    /* 允许在 ready 之后“再次打开”加载层（用于相册图片强力预加载） */
+    body.ready.show-loader #loadingOverlay {
+      opacity: 1;
+      visibility: visible;
+      pointer-events: auto;
+    }
+
     /* UI Controls */
     .top-bar {
       position: fixed;
@@ -393,11 +400,11 @@
       transition: transform 0.8s cubic-bezier(0.4, 0, 0.2, 1);
       will-change: transform;
     }
-    .scene.is-open, .magazine.is-open { --scene-shift: min(22vw, 210px); }
+    .scene.is-open, .magazine.is-open { --scene-shift: var(--scene-shift-open, min(22vw, 210px)); }
 
     @media (max-width: 600px) {
       .scene, .magazine { width: 44vw; height: 68vw; perspective: 2000px; }
-      .scene.is-open, .magazine.is-open { --scene-shift: 22vw; }
+      .scene.is-open, .magazine.is-open { --scene-shift: var(--scene-shift-open, 22vw); }
       .cover-title { font-size: 1.8rem; }
       .upload-title { font-size: 1.6rem; }
       .upload-box { padding: 40px 20px; }
@@ -423,7 +430,7 @@
         /* 关闭/打开时的总横向占用约为 (width + shift) ≈ 57vh；据此按视口宽度自适应缩放 */
         --scene-scale: min(1, calc((100vw - 24px) / 57vh));
       }
-      .scene.is-open, .magazine.is-open { --scene-shift: 19vh; }
+      .scene.is-open, .magazine.is-open { --scene-shift: var(--scene-shift-open, 19vh); }
       .cover-title { font-size: 1.8rem; }
       .upload-title { font-size: 1.4rem; }
       .upload-box { padding: 20px; width: 80%; }
@@ -724,6 +731,7 @@
       const progressText = document.getElementById('progressText');
       const progressTitle = document.getElementById('progressTitle');
       const appShell = document.getElementById('appShell');
+      const loadingOverlay = document.getElementById('loadingOverlay');
       const startBtn = document.getElementById('startBtn');
       const photoUpload = document.getElementById('photoUpload');
       const uploadContainer = document.getElementById('uploadContainer');
@@ -873,6 +881,115 @@
         ]);
       }
 
+      // ---- 强力图片预加载（解决移动端重组 DOM 后空白/未渲染） ----
+      function supportsWebp() {
+        try {
+          const c = document.createElement('canvas');
+          if (!c.getContext) return false;
+          return c.toDataURL('image/webp').indexOf('data:image/webp') === 0;
+        } catch (_) {
+          return false;
+        }
+      }
+
+      const CAN_USE_WEBP = supportsWebp();
+
+      function showLoader(title) {
+        // ready 后默认会隐藏 loadingOverlay，这里通过 show-loader 重新显示
+        document.body.classList.add('show-loader');
+        setProgress(0, title || '📸 正在加载照片...');
+      }
+
+      function hideLoader() {
+        document.body.classList.remove('show-loader');
+      }
+
+      function pickBestPhotoUrl(photo) {
+        if (!photo) return '';
+        if (CAN_USE_WEBP && photo.srcWebp) return String(photo.srcWebp);
+        return photo.src ? String(photo.src) : '';
+      }
+
+      function preloadImageUrl(url, perImageTimeoutMs) {
+        return new Promise(resolve => {
+          if (!url) return resolve({ url, ok: false, reason: 'empty' });
+
+          const img = new Image();
+          let done = false;
+          const finish = (ok, reason) => {
+            if (done) return;
+            done = true;
+            try {
+              img.onload = null;
+              img.onerror = null;
+            } catch (_) {}
+            resolve({ url, ok, reason });
+          };
+
+          const t = setTimeout(() => finish(false, 'timeout'), perImageTimeoutMs);
+          img.onload = () => {
+            clearTimeout(t);
+            finish(true, 'load');
+          };
+          img.onerror = () => {
+            clearTimeout(t);
+            finish(false, 'error');
+          };
+
+          // 避免某些浏览器对同 URL 复用连接导致的 race；并尽量走缓存
+          try { img.decoding = 'async'; } catch (_) {}
+          img.src = url;
+        });
+      }
+
+      async function preloadAlbumPhotos(photos, { overallTimeoutMs = 15000, perImageTimeoutMs = 8000 } = {}) {
+        const urls = (photos || []).map(pickBestPhotoUrl).filter(Boolean);
+        const total = urls.length;
+        if (total === 0) return { total: 0, loaded: 0, failed: 0, timeout: false };
+
+        let done = 0;
+        let loaded = 0;
+        let failed = 0;
+
+        const tasks = urls.map(u => preloadImageUrl(u, perImageTimeoutMs).then(r => {
+          done += 1;
+          if (r.ok) loaded += 1;
+          else failed += 1;
+          setProgress(Math.round((done / total) * 100), `📸 正在加载照片... (${done}/${total})`);
+          return r;
+        }));
+
+        const result = await withTimeout(Promise.allSettled(tasks), overallTimeoutMs);
+        const timeout = result === 'timeout';
+        // 即便超时也继续：避免卡死在 loading
+        setProgress(100, timeout ? '📸 加载超时，继续进入...' : '📸 照片加载完成');
+        return { total, loaded, failed, timeout };
+      }
+
+      async function warmDecodeBookImages({ timeoutMs = 2500 } = {}) {
+        // 进一步确保“下载完成但未解码”时，翻页不会出现短暂白屏
+        const imgs = Array.from(book.querySelectorAll('img'));
+        if (imgs.length === 0) return;
+
+        const decodePromises = imgs.map(img => {
+          if (img.complete && img.naturalWidth > 0 && typeof img.decode === 'function') {
+            return img.decode().catch(() => {});
+          }
+          // 对未 complete 的图片，等 load/error 即可
+          return new Promise(resolve => {
+            const onDone = () => {
+              img.removeEventListener('load', onDone);
+              img.removeEventListener('error', onDone);
+              resolve();
+            };
+            img.addEventListener('load', onDone, { once: true });
+            img.addEventListener('error', onDone, { once: true });
+          });
+        });
+
+        await withTimeout(Promise.allSettled(decodePromises), timeoutMs);
+      }
+
       (async function boot() {
         setProgress(0, '✨ 准备进入...');
 
@@ -887,9 +1004,9 @@
         bgm.preload = 'none';
         bgm.src = currentTrack;
 
-        // 若是内置相册，先生成 DOM（图片使用 src 直接加载）
+        // 若是内置相册，先触发进入（内部会做强力预加载）
         if (albumType === 'baby' || albumType === 'wedding') {
-          checkUrlParams();
+          await checkUrlParams();
         }
 
         const tasks = [];
@@ -919,7 +1036,7 @@
 
         // 非内置相册（默认页）在 ready 后再解析 URL 参数
         if (!(albumType === 'baby' || albumType === 'wedding')) {
-          checkUrlParams();
+          await checkUrlParams();
         }
       })();
 
@@ -1056,7 +1173,7 @@
         albumGeneratedOnce = true;
       }
 
-      function checkUrlParams() {
+      async function checkUrlParams() {
         const urlParams = new URLSearchParams(window.location.search);
         albumType = urlParams.get('album') || 'default';
         loadSettings();
@@ -1141,7 +1258,7 @@
             srcWebp: `assets/opt/photo_${i + 1}.webp`,
             caption: captions[i]
           }));
-          enterAlbum(babyPhotos, "宝宝满月<br>成长手记");
+          await enterAlbum(babyPhotos, "宝宝满月<br>成长手记");
         } else if (albumType === 'wedding') {
           const weddingFiles = [
             "img_v3_02105_09d5c28a-b9ad-45b6-b430-3736e2f9b0fg.png",
@@ -1160,20 +1277,36 @@
             srcWebp: `assets/opt/wedding/${filename.replace(/\.png$/i, '.webp')}`,
             caption: captions[i]
           }));
-          enterAlbum(weddingPhotos, "我们最美的<br>爱情故事");
+          await enterAlbum(weddingPhotos, "我们最美的<br>爱情故事");
         }
       }
 
-      function enterAlbum(photos, title, { force } = { force: false }) {
+      async function enterAlbum(photos, title, { force } = { force: false }) {
+        // 1) 强力预加载：确保图片在任何重排/3D 变换前已完成 onload（或超时兜底）
+        showLoader('📸 正在加载照片...');
+        await preloadAlbumPhotos(photos, { overallTimeoutMs: 15000, perImageTimeoutMs: 8000 });
+
+        // 2) 生成 DOM（仅在必要时）
         // Once photos are generated and loaded, Theme/Music switching should never rebuild `.book`.
         // Only regenerate when explicitly forced (e.g. user uploads a new set).
         if (!albumGeneratedOnce || force) {
           generateAlbum(photos, title);
         }
+
+        // 3) 进一步 warm decode，降低“已下载但未解码”的短暂白屏
+        await warmDecodeBookImages({ timeoutMs: 2500 });
+
+        // 4) 展示相册并适配尺寸
         uploadContainer.classList.add('hidden');
         albumMain.classList.remove('hidden');
         albumFooter.classList.remove('hidden');
-        
+
+        // 进入相册时，立即应用一次尺寸（尤其是横屏/旋转后）
+        applyResponsiveBookSize();
+        updateBook();
+
+        hideLoader();
+
         // 进入相册，开始播放音乐（如果是用户操作或已经过初始交互）
         if (currentTrack) {
           switchTrack(currentTrack, { autoplay: true });
@@ -1183,7 +1316,7 @@
       // Actions
       startBtn.onclick = () => photoUpload.click();
 
-      photoUpload.onchange = (e) => {
+      photoUpload.onchange = async (e) => {
         const files = Array.from(e.target.files);
         if (files.length === 0) return;
 
@@ -1192,7 +1325,7 @@
           caption: `上传的照片 #${i + 1}`
         }));
 
-        enterAlbum(photoData, "我们的<br>回忆录", { force: true });
+        await enterAlbum(photoData, "我们的<br>回忆录", { force: true });
       };
 
       document.getElementById('nextBtn').onclick = () => { 
@@ -1287,8 +1420,59 @@
       // Particles Engine
       const canvas = document.getElementById('particles');
       const ctx = canvas.getContext('2d');
-      function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
-      window.addEventListener('resize', resize); resize();
+      function resizeCanvas() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+      window.addEventListener('resize', resizeCanvas); resizeCanvas();
+
+      // ---- 横屏/旋转自适应：动态计算 book 尺寸，防止被裁剪 ----
+      const sceneEl = document.getElementById('scene');
+      const BOOK_RATIO = 420 / 580; // width/height
+      let sizeTimer = null;
+
+      function applyResponsiveBookSize() {
+        // 仅在相册展示时执行，避免干扰上传页布局
+        if (albumMain.classList.contains('hidden')) return;
+
+        // 仅对移动端（<= 950px）启用 JS 强制尺寸，避免桌面端样式意外改变
+        if (!window.matchMedia('(max-width: 950px)').matches) {
+          sceneEl.style.width = '';
+          sceneEl.style.height = '';
+          sceneEl.style.removeProperty('--scene-shift-open');
+          sceneEl.style.removeProperty('--scene-scale');
+          return;
+        }
+
+        const vw = Math.max(1, window.innerWidth);
+        const vh = Math.max(1, window.innerHeight);
+        const isLandscape = vw > vh;
+
+        // 留出一点边距，避免 iOS safe-area + fixed controls 导致“刚好贴边被裁”
+        const maxW = Math.max(1, vw - 24);
+        const maxH = Math.max(1, vh - 24);
+
+        // 高度优先：横屏给足高度，竖屏参考原本 75vh
+        const targetH0 = isLandscape ? maxH * 0.90 : maxH * 0.72;
+        let targetW = targetH0 * BOOK_RATIO;
+        if (targetW > maxW * 0.92) targetW = maxW * 0.92;
+        let targetH = targetW / BOOK_RATIO;
+
+        // 计算 open shift：确保翻开后不被右侧裁剪
+        const maxShift = Math.max(0, (maxW - targetW) / 2);
+        const desiredShift = isLandscape ? targetW * 0.35 : targetW * 0.50;
+        const shiftOpen = Math.min(desiredShift, maxShift);
+
+        sceneEl.style.width = Math.round(targetW) + 'px';
+        sceneEl.style.height = Math.round(targetH) + 'px';
+        sceneEl.style.setProperty('--scene-shift-open', Math.round(shiftOpen) + 'px');
+        sceneEl.style.setProperty('--scene-scale', '1');
+      }
+
+      function scheduleResponsiveBookSize() {
+        clearTimeout(sizeTimer);
+        sizeTimer = setTimeout(applyResponsiveBookSize, 120);
+      }
+
+      window.addEventListener('resize', scheduleResponsiveBookSize, { passive: true });
+      window.addEventListener('orientationchange', () => setTimeout(applyResponsiveBookSize, 250), { passive: true });
       
       const pts = Array.from({length: 60}, () => ({
         x: Math.random() * canvas.width, y: Math.random() * canvas.height,
