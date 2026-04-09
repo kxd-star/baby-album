@@ -434,8 +434,7 @@
     }
     .photo-container img { width: 92%; height: auto; max-height: 92%; object-fit: contain; border: 8px solid white; box-shadow: 0 8px 25px var(--shadow); }
     /* Lazy-loaded photos: keep nodes stable, only fade in when real src is set */
-    .photo-container img.album-photo { opacity: 0; transition: opacity 0.35s ease; }
-    .photo-container img.album-photo.is-loaded { opacity: 1; }
+    .photo-container img.album-photo { opacity: 1; }
     .caption { font-size: 1rem; text-align: center; font-weight: 700; color: var(--text); min-height: 50px; display: flex; align-items: center; }
 
     .cover-side { background: var(--cover-bg); color: white; border: none; display: flex; align-items: center; justify-content: center; }
@@ -624,9 +623,11 @@
       let pages = [];
       let albumType = 'default';
 
-      // --- Photo DOM stability & lazy loading ---
-      // 1x1 transparent placeholder to avoid broken-image icon before real src is assigned.
-      const IMG_PLACEHOLDER = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==';
+      // --- Photo DOM stability & mobile reliability ---
+      // Mobile + 3D flipbook + lazy-loading is fragile across iOS Safari.
+      // For reliability, we default to standard eager <img src> / <source srcset>.
+      // (Still keep a tiny helper to “force load” around the current page in case some browser
+      // delays decode while the element is being transformed.)
       let albumGeneratedOnce = false;
 
       function buildPhotoMarkup(photo) {
@@ -635,68 +636,41 @@
         const webp = photo.srcWebp ? String(photo.srcWebp) : '';
 
         if (webp) {
-          return `<div class="photo-container"><picture><source type="image/webp" data-srcset="${webp}"><img class="album-photo" src="${IMG_PLACEHOLDER}" data-src="${src}" alt=""></picture></div>`;
+          return `<div class="photo-container"><picture><source type="image/webp" srcset="${webp}"><img class="album-photo" src="${src}" alt="" loading="eager" decoding="async"></picture></div>`;
         }
 
-        return `<div class="photo-container"><img class="album-photo" src="${IMG_PLACEHOLDER}" data-src="${src}" alt=""></div>`;
+        return `<div class="photo-container"><img class="album-photo" src="${src}" alt="" loading="eager" decoding="async"></div>`;
       }
 
       function loadImageOnce(img) {
-        if (!img || img.dataset.loaded === '1') return;
-        const real = img.dataset.src;
+        // Backward-compatible: if any old nodes still use data-src, promote them.
+        if (!img) return;
+        const real = img.dataset ? img.dataset.src : '';
         if (!real) return;
 
-        // If wrapped by <picture>, activate WebP source lazily.
-        const pic = img.closest('picture');
+        const pic = img.closest && img.closest('picture');
         if (pic) {
-          const srcEl = pic.querySelector('source[data-srcset]');
-          if (srcEl && srcEl.dataset.srcset) {
+          const srcEl = pic.querySelector && pic.querySelector('source[data-srcset]');
+          if (srcEl && srcEl.dataset && srcEl.dataset.srcset) {
             srcEl.srcset = srcEl.dataset.srcset;
             srcEl.removeAttribute('data-srcset');
           }
         }
 
-        // Keep DOM node stable: only set src ONCE, never touch it again.
-        if (img.complete) {
-          img.classList.add('is-loaded');
-        } else {
-          img.onload = () => img.classList.add('is-loaded');
-          img.onerror = () => {
-             console.warn('[Album] Image load failed:', real);
-             img.style.opacity = '0.5'; // Show something failed
-          };
-        }
         img.src = real;
-        img.dataset.loaded = '1';
         img.removeAttribute('data-src');
       }
 
-      function loadImagesForPageIndex(pageIndex, loadBoth = false) {
-        const pageEls = document.querySelectorAll('.book .page');
-        const pageEl = pageEls[pageIndex];
-        if (!pageEl) return;
-        
-        if (loadBoth) {
+      function loadImagesAroundCurrentPage() {
+        // Force-promote any remaining data-src images around current page
+        const pageElements = Array.from(document.querySelectorAll('.book .page'));
+        const idxs = [currentPage - 1, currentPage, currentPage + 1, currentPage + 2, currentPage + 3];
+        idxs.forEach(i => {
+          const pageEl = pageElements[i];
+          if (!pageEl) return;
           const imgs = pageEl.querySelectorAll('img[data-src]');
           imgs.forEach(loadImageOnce);
-        } else {
-          const isFlipped = pageEl.classList.contains('flipped');
-          const sideSelector = isFlipped ? '.page-back' : '.page-front';
-          const imgs = pageEl.querySelectorAll(`${sideSelector} img[data-src]`);
-          imgs.forEach(loadImageOnce);
-        }
-      }
-
-      function loadImagesAroundCurrentPage() {
-        // Load the visible sides of current and adjacent pages
-        loadImagesForPageIndex(currentPage - 1, true); // prev page both sides (for back)
-        loadImagesForPageIndex(currentPage, true);     // current page both sides (for flip)
-        loadImagesForPageIndex(currentPage + 1, true); // next page both sides (for prefetch)
-        
-        // Prefetch a bit further
-        for (let i = 2; i <= 5; i++) {
-          loadImagesForPageIndex(currentPage + i, false);
-        }
+        });
       }
 
       // localStorage management
@@ -1197,7 +1171,6 @@
         uploadContainer.classList.add('hidden');
         albumMain.classList.remove('hidden');
         albumFooter.classList.remove('hidden');
-        editorPanel.classList.add('open');
         
         // 进入相册，开始播放音乐（如果是用户操作或已经过初始交互）
         if (currentTrack) {
