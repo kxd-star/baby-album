@@ -1,0 +1,9 @@
+127.0.0.1 - - [08/Apr/2026 18:18:42] "GET / HTTP/1.1" 200 -
+025adbd-39ee-4932-927c-05616c99c488/v23_album_fixed_v2/serve.py", line 5, in <module>
+    with socketserver.TCPServer(('', PORT), Handler) as httpd:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/socketserver.py", line 456, in __init__
+    self.server_bind()
+  File "/usr/local/lib/python3.11/socketserver.py", line 472, in server_bind
+    self.socket.bind(self.server_address)
+OSError: [Errno 98] Address already in use
