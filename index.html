@@ -325,6 +325,17 @@
       transition: all 0.2s; position: relative; overflow: hidden;
     }
     .theme-item.active { border-color: var(--accent); transform: scale(1.1); }
+    .theme-item.recommended::after {
+      content: '荐';
+      position: absolute;
+      top: 4px;
+      right: 6px;
+      font-size: 0.65rem;
+      background: rgba(0,0,0,0.7);
+      color: #fff;
+      padding: 2px 4px;
+      border-radius: 6px;
+    }
     .theme-preview { width: 100%; height: 100%; }
 
     .music-list { display: flex; flex-direction: column; gap: 8px; }
@@ -335,6 +346,7 @@
     }
     .music-item:hover { background: rgba(0,0,0,0.08); }
     .music-item.active { background: var(--cover-bg); color: white; }
+    .music-item.recommended { outline: 1px dashed var(--accent); }
 
     .save-btn {
       width: 100%; padding: 16px; border-radius: 16px; border: none;
@@ -660,12 +672,45 @@
         { src: 'assets/bgm.mp3', name: '🌟 星光: 经典回响 (循环)' }
       ];
 
+      // 多场景主题/BGM 依赖注入配置中心（可被上层通过 window.V23_ALBUM_PRESETS 覆写）
+      const DEFAULT_ALBUM_PRESETS = {
+        default: {
+          id: 'default',
+          sceneLabel: '通用相册',
+          defaultTheme: 'classic',
+          defaultTrack: tracks[0].src
+        },
+        baby: {
+          id: 'baby',
+          sceneLabel: '宝宝相册',
+          // 为避免“默认体验倒退”，保持原有经典棕色主题 + 温柔宝宝配乐
+          defaultTheme: 'classic',
+          defaultTrack: 'assets/bgm_3.mp3'
+        },
+        wedding: {
+          id: 'wedding',
+          sceneLabel: '婚纱相册',
+          defaultTheme: 'romantic-wedding',
+          defaultTrack: 'assets/bgm.mp3'
+        }
+      };
+
+      const albumPresets = (typeof window !== 'undefined' && window.V23_ALBUM_PRESETS)
+        ? { ...DEFAULT_ALBUM_PRESETS, ...window.V23_ALBUM_PRESETS }
+        : DEFAULT_ALBUM_PRESETS;
+
       let currentTheme = 'classic';
       let currentTrack = tracks[0].src;
       let currentPage = 0;
       let isPlaying = false;
       let pages = [];
       let albumType = 'default';
+
+      // 是否已存在本地偏好配置（用于控制 LLM 是否覆盖默认值）
+      let hasPersistedSettings = false;
+      // LLM 推荐的主题 / 曲目，仅做标记与 UI 高亮，不破坏用户手动选择
+      let recommendedThemeId = null;
+      let recommendedTrackSrc = null;
 
       // --- Photo load policy ---
       // 移动端（尤其 iOS + 3D 翻页）对懒加载非常敏感：统一使用最简单的 <img src> 直接加载。
@@ -689,6 +734,7 @@
         if (saved) {
           try {
             const data = JSON.parse(saved);
+            hasPersistedSettings = true;
             if (data.theme) {
               currentTheme = data.theme;
               themes.forEach(theme => document.body.classList.remove(`theme-${theme.id}`));
@@ -698,22 +744,20 @@
               const exists = tracks.some(t => t.src === data.track);
               currentTrack = exists ? data.track : tracks[0].src;
               bgm.src = currentTrack;
+            } else if (typeof data.trackIndex === 'number' && tracks[data.trackIndex]) {
+              // 兼容以索引形式保存的 BGM 偏好
+              currentTrack = tracks[data.trackIndex].src;
+              bgm.src = currentTrack;
             }
           } catch (e) {
             console.error('Error loading settings', e);
           }
         } else {
-          // Defaults for each scene
-          if (albumType === 'baby') {
-            currentTheme = 'classic'; // Warm brown
-            currentTrack = 'assets/bgm_3.mp3'; // Gentle baby music
-          } else if (albumType === 'wedding') {
-            currentTheme = 'romantic-wedding'; // Soft pink
-            currentTrack = 'assets/bgm.mp3'; // Beautiful in White
-          } else {
-            currentTheme = 'classic';
-            currentTrack = tracks[0].src;
-          }
+          // 默认体验按场景走 DI 配置，避免硬编码串台
+          hasPersistedSettings = false;
+          const preset = albumPresets[albumType] || albumPresets.default;
+          currentTheme = preset.defaultTheme;
+          currentTrack = preset.defaultTrack;
           themes.forEach(theme => document.body.classList.remove(`theme-${theme.id}`));
           document.body.classList.add(`theme-${currentTheme}`);
           bgm.src = currentTrack;
@@ -721,7 +765,13 @@
       }
 
       function saveSettings() {
-        const data = { theme: currentTheme, track: currentTrack };
+        const trackIndex = tracks.findIndex(t => t.src === currentTrack);
+        const data = {
+          theme: currentTheme,
+          track: currentTrack,
+          // 同步写入索引，便于未来列表调整时仍能回显
+          trackIndex: trackIndex >= 0 ? trackIndex : undefined
+        };
         localStorage.setItem(`v23_album_settings_${albumType}`, JSON.stringify(data));
       }
 
@@ -816,9 +866,11 @@
         themeGrid.innerHTML = '';
         themes.forEach(t => {
           const div = document.createElement('div');
-          div.className = `theme-item ${currentTheme === t.id ? 'active' : ''}`;
+          const isActive = currentTheme === t.id;
+          const isRecommended = !!recommendedThemeId && recommendedThemeId === t.id;
+          div.className = `theme-item ${isActive ? 'active' : ''} ${isRecommended ? 'recommended' : ''}`.trim();
           div.style.background = t.color;
-          div.title = t.name;
+          div.title = isRecommended ? `${t.name} · 推荐` : t.name;
           div.onclick = () => {
             // Remove existing theme classes then add the new one, avoiding overwriting 'ready'
             themes.forEach(theme => document.body.classList.remove(`theme-${theme.id}`));
@@ -836,8 +888,13 @@
         musicList.innerHTML = '';
         tracks.forEach(t => {
           const div = document.createElement('div');
-          div.className = `music-item ${currentTrack === t.src ? 'active' : ''}`;
-          div.innerHTML = `<span>${t.name}</span>${currentTrack === t.src ? '✅' : ''}`;
+          const isActive = currentTrack === t.src;
+          const isRecommended = !!recommendedTrackSrc && recommendedTrackSrc === t.src;
+          div.className = `music-item ${isActive ? 'active' : ''} ${isRecommended ? 'recommended' : ''}`.trim();
+          let tail = '';
+          if (isActive) tail = '✅';
+          else if (isRecommended) tail = '⭐ 推荐';
+          div.innerHTML = `<span>${t.name}</span>${tail}`;
           div.onclick = () => {
             currentTrack = t.src;
             switchTrack(t.src, { autoplay: isPlaying });
@@ -1173,6 +1230,75 @@
         albumGeneratedOnce = true;
       }
 
+      // ---- LLM 驱动的 Theme/BGM 推荐（完全可选的外部能力钩子） ----
+      
+      // Inject actual LLM call hooked to Python backend serve.py
+      window.LLM_THEME_BGM_RECOMMENDER = async function(payload) {
+        console.log("Asking LLM to recommend for:", payload.albumType);
+        try {
+          const res = await fetch('/api/recommend', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          const data = await res.json();
+          console.log("LLM Recommendation received:", data);
+          return data;
+        } catch (e) {
+          console.error("LLM recommendation failed:", e);
+          return null;
+        }
+      };
+
+      async function applyLLMRecommendationForAlbum({ albumType: rawType, title, photos, captions }) {
+        if (typeof window === 'undefined' || typeof window.LLM_THEME_BGM_RECOMMENDER !== 'function') {
+          return;
+        }
+
+        // 数据沙箱：仅允许 baby / wedding / default 三类，严禁在一次调用中交叉引用
+        const safeType = (rawType === 'baby' || rawType === 'wedding') ? rawType : 'default';
+
+        const payload = {
+          albumType: safeType,
+          title: String(title || ''),
+          // 仅传入当前相册的文案与图片元数据，不混用其他场景的数据
+          captions: Array.isArray(captions) ? captions.slice(0, 30).map(c => String(c || '')) : [],
+          photos: Array.isArray(photos)
+            ? photos.map(p => ({ src: String(p.src || ''), caption: p.caption ? String(p.caption) : '' }))
+            : [],
+          // 提供可选候选集，由外部 LLM 决定具体组合
+          themes: themes.map(t => ({ id: t.id, name: t.name })),
+          tracks: tracks.map(t => ({ src: t.src, name: t.name }))
+        };
+
+        try {
+          const result = await window.LLM_THEME_BGM_RECOMMENDER(payload);
+          if (!result || typeof result !== 'object') return;
+
+          const { themeId, trackSrc } = result;
+
+          if (themeId && themes.some(t => t.id === themeId)) {
+            recommendedThemeId = themeId;
+            currentTheme = themeId;
+          }
+
+          if (trackSrc && tracks.some(t => t.src === trackSrc)) {
+            recommendedTrackSrc = trackSrc;
+            currentTrack = trackSrc;
+          }
+
+          // 应用到 UI，并写入 localStorage，使其成为该相册类型的“智能默认”
+          themes.forEach(theme => document.body.classList.remove(`theme-${theme.id}`));
+          document.body.classList.add(`theme-${currentTheme}`);
+          bgm.src = currentTrack;
+          saveSettings();
+          renderThemes();
+          renderMusic();
+        } catch (e) {
+          console.warn('[LLM] recommendation error', e);
+        }
+      }
+
       async function checkUrlParams() {
         const urlParams = new URLSearchParams(window.location.search);
         albumType = urlParams.get('album') || 'default';
@@ -1252,16 +1378,60 @@
         };
 
         if (albumType === 'baby') {
-          const captions = getCaptions('baby', 20);
-          const babyPhotos = Array.from({length: 20}, (_, i) => ({
-            src: `assets/photo_${i + 1}.jpg`,
-            srcWebp: `assets/opt/photo_${i + 1}.webp`,
-            caption: captions[i]
+          // Story-driven photo order: narrative arc from "初见" to "成长"
+          // Grouped by chapters, alternating themes for visual rhythm
+          const storyOrder = [
+            // Ch1: 初见 — first glimpses, calm & curious
+            { file: 5,  caption: "初见这个世界，一切都好新鲜。" },
+            { file: 11, caption: "小小的你，安静地打量着周围。" },
+            // Ch2: 探索 — tummy time, discovering the world
+            { file: 14, caption: "第一次趴趴，小拳头撑起了整个世界。" },
+            { file: 6,  caption: "好奇的眼神，像在说"你是谁呀？"" },
+            // Ch3: 小骑士登场 — pony theme intro
+            { file: 4,  caption: "变身小骑士，准备出发去冒险！" },
+            { file: 17, caption: "和小马驹们在一起，世界真有趣。" },
+            // Ch4: 甜蜜日常 — cozy everyday moments
+            { file: 1,  caption: "躺在玩偶中间，这就是满满的幸福。" },
+            { file: 2,  caption: "咧嘴一笑，全家人都融化了。" },
+            // Ch5: 越来越活泼 — getting more expressive
+            { file: 13, caption: "打了个大大的哈欠，探索世界也要休息呀。" },
+            { file: 12, caption: "眼睛亮亮的，好像有讲不完的故事。" },
+            // Ch6: 小马驹的午后 — pony theme continued
+            { file: 8,  caption: "窝在暖暖的小窝里，好安心。" },
+            { file: 9,  caption: "和玩具小马对视，这是你最好的朋友吗？" },
+            // Ch7: 渐渐长大 — growing up
+            { file: 3,  caption: "坐得越来越稳，每天都在进步呢。" },
+            { file: 18, caption: "小手抓着玩具，满脸都是成就感。" },
+            // Ch8: 欢乐时光 — big smiles & joy
+            { file: 15, caption: "笑得像一颗小太阳，照亮了整间屋子。" },
+            { file: 16, caption: "嘻嘻，被逗乐了！" },
+            // Ch9: 告别与期许 — closing
+            { file: 10, caption: "安安静静，像个思考人生的小哲学家。" },
+            { file: 19, caption: "伸个懒腰，今天也是元气满满的一天。" },
+            { file: 20, caption: "小手比划着，好像在说"我爱你们"。" },
+            { file: 7,  caption: "满月快乐！未来的每一天，都值得期待。" }
+          ];
+
+          const babyPhotos = storyOrder.map(item => ({
+            src: `assets/photo_${item.file}.jpg`,
+            srcWebp: `assets/opt/photo_${item.file}.webp`,
+            caption: item.caption
           }));
+
+          // 若当前相册类型尚无用户自定义设置，则尝试用 LLM 做一次智能推荐
+          if (!hasPersistedSettings) {
+            await applyLLMRecommendationForAlbum({
+              albumType,
+              title: '宝宝满月·成长手记',
+              photos: babyPhotos,
+              captions: babyPhotos.map(p => p.caption)
+            });
+          }
+
           await enterAlbum(babyPhotos, "宝宝满月<br>成长手记");
         } else if (albumType === 'wedding') {
           const weddingFiles = [
-            "img_v3_02105_09d5c28a-b9ad-45b6-b430-3736e2f9b0fg.png",
+          "img_v3_02105_09d5c28a-b9ad-45b6-b430-3736e2f9b0fg.png",
             "img_v3_02105_1c748d0d-2cf3-480a-8695-793c99e8c12g.png",
             "img_v3_02105_3143fb02-d372-4994-a730-9568bee0d3ag.png",
             "img_v3_02105_6c07dad0-789e-4786-bd65-c446d34597dg.png",
@@ -1277,6 +1447,16 @@
             srcWebp: `assets/opt/wedding/${filename.replace(/\.png$/i, '.webp')}`,
             caption: captions[i]
           }));
+
+          if (!hasPersistedSettings) {
+            await applyLLMRecommendationForAlbum({
+              albumType,
+              title: '我们最美的爱情故事',
+              photos: weddingPhotos,
+              captions
+            });
+          }
+
           await enterAlbum(weddingPhotos, "我们最美的<br>爱情故事");
         }
       }
@@ -1320,9 +1500,10 @@
         const files = Array.from(e.target.files);
         if (files.length === 0) return;
 
+        const uploadCaptions = getCaptions(albumType || 'default', files.length);
         const photoData = files.map((file, i) => ({
           src: URL.createObjectURL(file),
-          caption: `上传的照片 #${i + 1}`
+          caption: uploadCaptions[i]
         }));
 
         await enterAlbum(photoData, "我们的<br>回忆录", { force: true });
