@@ -1,6 +1,7 @@
 import os
 import json
 import uvicorn
+from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, HTMLResponse
 from starlette.responses import FileResponse
@@ -8,10 +9,17 @@ from fastapi.middleware.cors import CORSMiddleware
 import httpx
 
 app = FastAPI()
+ROOT_DIR = Path(__file__).resolve().parent
+
+allowed_origins = [
+    origin.strip()
+    for origin in os.environ.get("ALLOWED_ORIGINS", "*").split(",")
+    if origin.strip()
+]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins or ["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -56,11 +64,19 @@ async def recommend(request: Request):
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.post(url, headers=headers, json=payload)
+            resp.raise_for_status()
             resp_data = resp.json()
             content = resp_data["choices"][0]["message"]["content"]
             content = content.replace("```json", "").replace("```", "").strip()
             result = json.loads(content)
-            return JSONResponse(result)
+            theme_ids = {str(t.get("id", "")) for t in themes if isinstance(t, dict)}
+            track_srcs = {str(t.get("src", "")) for t in tracks if isinstance(t, dict)}
+            theme_id = result.get("themeId", "")
+            track_src = result.get("trackSrc", "")
+            return JSONResponse({
+                "themeId": theme_id if theme_id in theme_ids else "",
+                "trackSrc": track_src if track_src in track_srcs else "",
+            })
     except Exception as e:
         print("LLM Call failed:", repr(e))
         return JSONResponse({"themeId": "", "trackSrc": ""})
@@ -70,8 +86,11 @@ async def serve_static(path: str):
     if not path or path == "/":
         path = "index.html"
     
-    file_path = os.path.join(".", path)
-    if os.path.exists(file_path) and os.path.isfile(file_path):
+    file_path = (ROOT_DIR / path).resolve()
+    if ROOT_DIR not in file_path.parents and file_path != ROOT_DIR:
+        return HTMLResponse("Not Found", status_code=404)
+
+    if file_path.exists() and file_path.is_file():
         if path == "index.html":
             with open(file_path, "r", encoding="utf-8") as f:
                 content = f.read()

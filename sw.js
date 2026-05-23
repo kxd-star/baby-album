@@ -4,7 +4,7 @@
  * - Others: stale-while-revalidate
  */
 
-const VERSION = 'v23-2026-04-14-1';
+const VERSION = 'v23-2026-05-22-1';
 const SHELL_CACHE = `v23-shell-${VERSION}`;
 const RUNTIME_CACHE = `v23-runtime-${VERSION}`;
 
@@ -14,14 +14,20 @@ const SHELL_ASSETS = [
   './assets/bgm.mp3',
   // small critical images (used only when album query hits)
   './assets/opt/photo_1.webp',
-  './assets/opt/wedding/img_v3_02105_00a228c8-e3af-4e96-9c24-3ecbb865066g.webp'
+  './assets/opt/wedding/img_v3_02105_09d5c28a-b9ad-45b6-b430-3736e2f9b0fg.webp'
 ];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
     (async () => {
       const cache = await caches.open(SHELL_CACHE);
-      await cache.addAll(SHELL_ASSETS);
+      await Promise.allSettled(
+        SHELL_ASSETS.map((asset) =>
+          cache.add(asset).catch((err) => {
+            console.warn('[SW] precache skipped:', asset, err);
+          })
+        )
+      );
       self.skipWaiting();
     })()
   );

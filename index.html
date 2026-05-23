@@ -597,7 +597,7 @@
         <div id="saveSuccess" class="hidden">
           <div class="upload-icon">✅</div>
           <h2 style="color:#2ecc71;margin-bottom:10px;">保存成功！</h2>
-          <p>您的专属相册链接已生成，可随时在“时光档案馆”查看。</p>
+          <p>您的主题和音乐偏好已保存，下次打开同类相册会自动应用。</p>
           <button class="save-btn" style="margin-top:20px;" onclick="document.getElementById('saveModal').classList.remove('active')">太棒了</button>
         </div>
       </div>
@@ -711,6 +711,12 @@
       // LLM 推荐的主题 / 曲目，仅做标记与 UI 高亮，不破坏用户手动选择
       let recommendedThemeId = null;
       let recommendedTrackSrc = null;
+      let uploadedObjectUrls = [];
+
+      function releaseUploadedObjectUrls() {
+        uploadedObjectUrls.forEach(url => URL.revokeObjectURL(url));
+        uploadedObjectUrls = [];
+      }
 
       // --- Photo load policy ---
       // 移动端（尤其 iOS + 3D 翻页）对懒加载非常敏感：统一使用最简单的 <img src> 直接加载。
@@ -1074,7 +1080,7 @@
         if (albumType === 'baby') {
           tasks.push({ name: '预热首张照片', p: preloadUrl('assets/opt/photo_1.webp') });
         } else if (albumType === 'wedding') {
-          tasks.push({ name: '预热首张照片', p: preloadUrl('assets/opt/wedding/img_v3_02105_00a228c8-e3af-4e96-9c24-3ecbb865066g.webp') });
+          tasks.push({ name: '预热首张照片', p: preloadUrl('assets/opt/wedding/img_v3_02105_09d5c28a-b9ad-45b6-b430-3736e2f9b0fg.webp') });
         }
 
         let done = 0;
@@ -1232,21 +1238,40 @@
 
       // ---- LLM 驱动的 Theme/BGM 推荐（完全可选的外部能力钩子） ----
       
-      // Inject actual LLM call hooked to Python backend serve.py
+      function getLocalRecommendation(albumType) {
+        if (albumType === 'baby') {
+          return { themeId: 'classic', trackSrc: 'assets/bgm_3.mp3' };
+        }
+        if (albumType === 'wedding') {
+          return { themeId: 'romantic-wedding', trackSrc: 'assets/bgm.mp3' };
+        }
+        return { themeId: 'classic', trackSrc: tracks[0].src };
+      }
+
+      // Optional LLM call hooked to Python backend serve.py. Static deployments keep working via local fallback.
       window.LLM_THEME_BGM_RECOMMENDER = async function(payload) {
         console.log("Asking LLM to recommend for:", payload.albumType);
+        const fallback = getLocalRecommendation(payload.albumType);
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 1500);
+
         try {
           const res = await fetch('/api/recommend', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
+            body: JSON.stringify(payload),
+            signal: controller.signal
           });
+          if (!res.ok) return fallback;
+
           const data = await res.json();
           console.log("LLM Recommendation received:", data);
           return data;
         } catch (e) {
-          console.error("LLM recommendation failed:", e);
-          return null;
+          console.info("LLM recommendation unavailable; using local fallback.");
+          return fallback;
+        } finally {
+          clearTimeout(timeoutId);
         }
       };
 
@@ -1386,7 +1411,7 @@
             { file: 11, caption: "小小的你，安静地打量着周围。" },
             // Ch2: 探索 — tummy time, discovering the world
             { file: 14, caption: "第一次趴趴，小拳头撑起了整个世界。" },
-            { file: 6,  caption: "好奇的眼神，像在说"你是谁呀？"" },
+            { file: 6,  caption: "好奇的眼神，像在说“你是谁呀？”" },
             // Ch3: 小骑士登场 — pony theme intro
             { file: 4,  caption: "变身小骑士，准备出发去冒险！" },
             { file: 17, caption: "和小马驹们在一起，世界真有趣。" },
@@ -1408,7 +1433,7 @@
             // Ch9: 告别与期许 — closing
             { file: 10, caption: "安安静静，像个思考人生的小哲学家。" },
             { file: 19, caption: "伸个懒腰，今天也是元气满满的一天。" },
-            { file: 20, caption: "小手比划着，好像在说"我爱你们"。" },
+            { file: 20, caption: "小手比划着，好像在说“我爱你们”。" },
             { file: 7,  caption: "满月快乐！未来的每一天，都值得期待。" }
           ];
 
@@ -1500,9 +1525,14 @@
         const files = Array.from(e.target.files);
         if (files.length === 0) return;
 
+        releaseUploadedObjectUrls();
         const uploadCaptions = getCaptions(albumType || 'default', files.length);
         const photoData = files.map((file, i) => ({
-          src: URL.createObjectURL(file),
+          src: (() => {
+            const url = URL.createObjectURL(file);
+            uploadedObjectUrls.push(url);
+            return url;
+          })(),
           caption: uploadCaptions[i]
         }));
 
@@ -1542,6 +1572,9 @@
         safeResetAudio();
         isPlaying = false;
         currentPage = 0;
+        book.innerHTML = '';
+        albumGeneratedOnce = false;
+        releaseUploadedObjectUrls();
         updateBook();
         // 清除 URL 参数，回到干净的上传页
         const newUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
