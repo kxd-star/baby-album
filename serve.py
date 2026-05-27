@@ -1,3 +1,4 @@
+import asyncio
 import json
 import mimetypes
 import os
@@ -20,6 +21,7 @@ ROOT_DIR = Path(__file__).resolve().parent
 UPLOAD_DIR = ROOT_DIR / "uploads"
 MAX_UPLOAD_BYTES = int(os.environ.get("MAX_UPLOAD_BYTES", str(8 * 1024 * 1024)))
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
+CAPTION_CONCURRENCY = int(os.environ.get("CAPTION_CONCURRENCY", "4"))
 
 allowed_origins = [
     origin.strip()
@@ -251,9 +253,16 @@ async def generate_caption(request: Request, data: CaptionRequest):
 
 @app.post("/api/captions")
 async def generate_captions(request: Request, data: CaptionsRequest):
+    photos = data.photos[:30]
+    semaphore = asyncio.Semaphore(max(1, CAPTION_CONCURRENCY))
+
+    async def caption_one(photo: CaptionPhoto):
+        async with semaphore:
+            return await generate_caption_for_photo(request, photo, data.albumType)
+
+    generated = await asyncio.gather(*(caption_one(photo) for photo in photos))
     captions = []
-    for photo in data.photos[:30]:
-        caption = await generate_caption_for_photo(request, photo, data.albumType)
+    for photo, caption in zip(photos, generated):
         captions.append({
             "id": photo.id,
             "url": photo.url,

@@ -1724,7 +1724,7 @@
 
         try {
           showLoader('☁️ 正在上传照片...');
-          setProgress(8, `☁️ 正在上传照片... (0/${files.length})`);
+          setProgress(8, '☁️ 正在上传照片...');
           photoData = await uploadFilesToServer(files);
           setProgress(45, `☁️ 上传完成，正在生成配文...`);
 
