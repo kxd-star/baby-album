@@ -55,6 +55,18 @@ class CaptionsRequest(BaseModel):
     title: str | None = ""
 
 
+class StorylinePhoto(BaseModel):
+    id: str | None = None
+    url: str | None = None
+    caption: str | None = None
+
+
+class StorylineRequest(BaseModel):
+    albumType: str | None = "default"
+    title: str | None = ""
+    photos: list[StorylinePhoto]
+
+
 def get_public_base_url(request: Request) -> str:
     configured = os.environ.get("PUBLIC_BASE_URL", "").strip().rstrip("/")
     if configured:
@@ -147,6 +159,120 @@ def fallback_caption(album_type: str | None = "default") -> str:
     if album_type == "wedding":
         return "浪漫而珍贵的幸福时刻"
     return "值得珍藏的美好瞬间"
+
+
+def storyline_templates(album_type: str | None = "default") -> list[dict[str, str]]:
+    if album_type == "baby":
+        return [
+            {"title": "初见", "description": "宝宝初来人世的美好瞬间"},
+            {"title": "成长", "description": "记录一点点变化和新本领"},
+            {"title": "日常", "description": "日常陪伴里的温馨片段"},
+            {"title": "珍藏", "description": "值得反复回看的幸福时刻"},
+        ]
+    if album_type == "wedding":
+        return [
+            {"title": "相遇", "description": "故事开始时的心动瞬间"},
+            {"title": "心动", "description": "彼此靠近的浪漫片段"},
+            {"title": "相守", "description": "携手同行的温柔承诺"},
+            {"title": "定格", "description": "把幸福留在这一刻"},
+        ]
+    return [
+        {"title": "开篇", "description": "回忆从这些画面慢慢展开"},
+        {"title": "日常", "description": "平凡生活里的温暖片段"},
+        {"title": "高光", "description": "最值得停留的闪亮瞬间"},
+        {"title": "珍藏", "description": "留给以后反复回看的记忆"},
+    ]
+
+
+def fallback_storyline(photos: list[StorylinePhoto], album_type: str | None = "default") -> list[dict[str, Any]]:
+    photo_ids = [str(photo.id) for photo in photos if photo.id]
+    if not photo_ids:
+        return []
+
+    if len(photo_ids) == 1:
+        chapter_count = 1
+    elif len(photo_ids) <= 4:
+        chapter_count = 2
+    elif len(photo_ids) <= 9:
+        chapter_count = 3
+    else:
+        chapter_count = 4
+
+    templates = storyline_templates(album_type)
+    chunk_size = (len(photo_ids) + chapter_count - 1) // chapter_count
+    chapters: list[dict[str, Any]] = []
+
+    for index in range(chapter_count):
+        ids = photo_ids[index * chunk_size : (index + 1) * chunk_size]
+        if not ids:
+            continue
+        template = templates[index] if index < len(templates) else templates[-1]
+        chapters.append({
+            "title": template["title"],
+            "description": template["description"],
+            "photo_ids": ids,
+        })
+
+    return chapters
+
+
+def normalize_storyline_chapters(
+    raw_chapters: Any,
+    photos: list[StorylinePhoto],
+    album_type: str | None = "default",
+) -> list[dict[str, Any]]:
+    known_ids = [str(photo.id) for photo in photos if photo.id]
+    known = set(known_ids)
+    if not known_ids or not isinstance(raw_chapters, list):
+        return fallback_storyline(photos, album_type)
+
+    templates = storyline_templates(album_type)
+    used: set[str] = set()
+    chapters: list[dict[str, Any]] = []
+
+    for index, item in enumerate(raw_chapters):
+        if not isinstance(item, dict):
+            continue
+        raw_ids = item.get("photo_ids", [])
+        if not isinstance(raw_ids, list):
+            continue
+
+        clean_ids = []
+        for raw_id in raw_ids:
+            photo_id = str(raw_id)
+            if photo_id in known and photo_id not in used:
+                clean_ids.append(photo_id)
+                used.add(photo_id)
+
+        if not clean_ids:
+            continue
+
+        template = templates[min(index, len(templates) - 1)]
+        title = str(item.get("title") or template["title"]).strip()[:12]
+        description = str(item.get("description") or template["description"]).strip()[:80]
+        chapters.append({
+            "title": title or template["title"],
+            "description": description or template["description"],
+            "photo_ids": clean_ids,
+        })
+
+    missing_ids = [photo_id for photo_id in known_ids if photo_id not in used]
+    if missing_ids:
+        if chapters:
+            chapters[-1]["photo_ids"].extend(missing_ids)
+        else:
+            return fallback_storyline(photos, album_type)
+
+    if len(chapters) > 4:
+        merged = chapters[:4]
+        for extra in chapters[4:]:
+            merged[-1]["photo_ids"].extend(extra["photo_ids"])
+        chapters = merged
+
+    if len(known_ids) > 1 and len(chapters) < 2:
+        return fallback_storyline(photos, album_type)
+
+    return chapters
 
 
 def uploaded_filename_for(file: UploadFile) -> str:
@@ -269,6 +395,50 @@ async def generate_captions(request: Request, data: CaptionsRequest):
             "caption": caption,
         })
     return JSONResponse({"captions": captions})
+
+
+@app.post("/api/storyline")
+async def generate_storyline(data: StorylineRequest):
+    photos = [photo for photo in data.photos[:30] if photo.id]
+    if not photos:
+        return JSONResponse({"chapters": []})
+
+    compact_photos = [
+        {
+            "id": str(photo.id),
+            "caption": (photo.caption or fallback_caption(data.albumType)).strip()[:80],
+        }
+        for photo in photos
+    ]
+    prompt = f"""你是相册故事线编辑师。
+相册类型: {data.albumType or "default"}，标题: {data.title or ""}
+
+每张照片的信息:
+{json.dumps(compact_photos, ensure_ascii=False)}
+
+任务：
+1. 根据配文内容和氛围，把所有照片分成 2-4 个章节
+2. 每个章节起一个标题（2-4字）+ 一句话描述
+3. 给每个章节内照片排序，形成叙事节奏
+
+请只返回合法 JSON，不要 Markdown，不要解释。格式如下：
+{{"chapters":[{{"title":"初见","description":"宝宝初来人世的美好瞬间","photo_ids":["p3","p1","p5"]}}]}}
+photo_ids 必须只使用输入中出现过的 id，且每张照片必须且只能出现一次。"""
+
+    try:
+        content = await call_ark_chat([{"role": "user", "content": prompt}], vision=False)
+        if content:
+            result = safe_json_from_text(content)
+            chapters = normalize_storyline_chapters(
+                result.get("chapters"),
+                photos,
+                data.albumType,
+            )
+            return JSONResponse({"chapters": chapters})
+    except Exception as e:
+        print("Storyline generation failed:", repr(e))
+
+    return JSONResponse({"chapters": fallback_storyline(photos, data.albumType)})
 
 
 @app.post("/api/recommend")

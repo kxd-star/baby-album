@@ -515,6 +515,140 @@
     #saveModal.active { display: flex; }
     #saveModal.active .modal-box { transform: scale(1); }
 
+    #storylineModal {
+      position: fixed;
+      inset: 0;
+      z-index: 15000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      background: rgba(18, 14, 10, 0.58);
+      backdrop-filter: blur(10px);
+    }
+    .storyline-panel {
+      width: min(920px, calc(100vw - 32px));
+      max-height: min(820px, calc(100vh - 32px));
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      padding: 24px;
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.96);
+      box-shadow: 0 24px 70px rgba(0,0,0,0.28);
+      color: #2f261f;
+    }
+    .storyline-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 18px;
+    }
+    .storyline-kicker {
+      font-size: 0.78rem;
+      font-weight: 900;
+      color: var(--cover-bg);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 6px;
+    }
+    .storyline-heading {
+      font-size: 1.5rem;
+      line-height: 1.2;
+      font-weight: 900;
+      font-family: var(--font-display);
+    }
+    .storyline-note {
+      margin-top: 6px;
+      color: #6f6258;
+      font-size: 0.95rem;
+      line-height: 1.5;
+    }
+    .storyline-list {
+      display: grid;
+      gap: 12px;
+      overflow-y: auto;
+      padding-right: 4px;
+    }
+    .storyline-card {
+      border: 1px solid rgba(0,0,0,0.08);
+      border-radius: 8px;
+      background: #fff;
+      padding: 14px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.06);
+    }
+    .storyline-title-input {
+      width: 100%;
+      border: 1px solid rgba(0,0,0,0.12);
+      border-radius: 8px;
+      padding: 10px 12px;
+      font: 900 1rem var(--font-body);
+      color: var(--cover-bg);
+      background: #fffaf5;
+      outline: none;
+    }
+    .storyline-title-input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(212, 163, 115, 0.18);
+    }
+    .storyline-desc {
+      margin: 10px 2px 12px;
+      color: #6b5e54;
+      font-size: 0.92rem;
+      line-height: 1.45;
+    }
+    .storyline-thumbs {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(74px, 1fr));
+      gap: 8px;
+    }
+    .storyline-thumb {
+      aspect-ratio: 1;
+      border-radius: 8px;
+      overflow: hidden;
+      background: #f2eee8;
+      border: 1px solid rgba(0,0,0,0.06);
+    }
+    .storyline-thumb img {
+      width: 100%;
+      height: 100%;
+      display: block;
+      object-fit: cover;
+    }
+    .storyline-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 12px;
+      border-top: 1px solid rgba(0,0,0,0.08);
+      padding-top: 16px;
+    }
+    .storyline-btn {
+      min-width: 120px;
+      border: none;
+      border-radius: 999px;
+      padding: 12px 18px;
+      font-weight: 900;
+      cursor: pointer;
+      transition: transform 0.2s, filter 0.2s;
+    }
+    .storyline-btn:hover { transform: translateY(-2px); filter: brightness(1.04); }
+    .storyline-btn:disabled { opacity: 0.55; cursor: wait; transform: none; }
+    .storyline-btn.secondary { background: #efe8df; color: #55483e; }
+    .storyline-btn.primary {
+      color: white;
+      background: linear-gradient(135deg, var(--cover-bg), var(--accent));
+      box-shadow: 0 10px 20px var(--shadow);
+    }
+
+    @media (max-width: 600px) {
+      #storylineModal { padding: 12px; }
+      .storyline-panel { padding: 18px; max-height: calc(100vh - 24px); }
+      .storyline-header { display: block; }
+      .storyline-heading { font-size: 1.22rem; }
+      .storyline-actions { display: grid; grid-template-columns: 1fr; }
+      .storyline-btn { width: 100%; }
+    }
+
     .hidden { display: none !important; }
   </style>
 </head>
@@ -527,6 +661,23 @@
       <div class="loader-title" id="progressTitle">✨ 正在进入 AI 创作空间...</div>
       <div class="progress-container"><div id="progressBar"></div></div>
       <div class="progress-text" id="progressText">0%</div>
+    </div>
+  </div>
+
+  <div id="storylineModal" class="hidden">
+    <div class="storyline-panel">
+      <div class="storyline-header">
+        <div>
+          <div class="storyline-kicker">AI Storyline</div>
+          <div class="storyline-heading">AI 为你规划了故事线</div>
+          <div class="storyline-note">可以直接改章节标题，确认后再推荐主题和音乐。</div>
+        </div>
+      </div>
+      <div id="storylineList" class="storyline-list"></div>
+      <div class="storyline-actions">
+        <button type="button" id="regenerateStorylineBtn" class="storyline-btn secondary">重新生成</button>
+        <button type="button" id="confirmStorylineBtn" class="storyline-btn primary">确认使用</button>
+      </div>
     </div>
   </div>
 
@@ -789,7 +940,20 @@
         return result.slice(0, count);
       }
 
-      function persistUploadedAlbum(photos, title) {
+      function sanitizeChaptersForStorage(chapters, allowedIds) {
+        const allowed = new Set(allowedIds.map(String));
+        return Array.isArray(chapters)
+          ? chapters.map(chapter => ({
+            title: String(chapter.title || '章节').slice(0, 24),
+            description: String(chapter.description || '').slice(0, 120),
+            photo_ids: Array.isArray(chapter.photo_ids)
+              ? chapter.photo_ids.map(String).filter(id => allowed.has(id))
+              : []
+          })).filter(chapter => chapter.photo_ids.length > 0)
+          : [];
+      }
+
+      function persistUploadedAlbum(photos, title, chapters = []) {
         const persistedPhotos = photos
           .filter(photo => photo && photo.persisted && photo.src)
           .map(photo => ({
@@ -800,9 +964,11 @@
 
         if (persistedPhotos.length === 0) return false;
 
+        const persistedIds = persistedPhotos.map(photo => photo.id).filter(Boolean);
         localStorage.setItem(UPLOADED_ALBUM_KEY, JSON.stringify({
           title,
           photos: persistedPhotos,
+          chapters: sanitizeChaptersForStorage(chapters, persistedIds),
           createdAt: Date.now()
         }));
         return true;
@@ -814,14 +980,30 @@
           if (!raw) return null;
           const data = JSON.parse(raw);
           if (!Array.isArray(data.photos) || data.photos.length === 0) return null;
+          const photos = data.photos.map(photo => ({
+            id: photo.id || '',
+            src: photo.src,
+            caption: photo.caption || '值得珍藏的美好瞬间',
+            persisted: true
+          }));
+          const chapters = sanitizeChaptersForStorage(data.chapters, photos.map(photo => photo.id).filter(Boolean));
+          const photoById = new Map(photos.map(photo => [photo.id, photo]));
+          const orderedPhotos = [];
+
+          chapters.forEach(chapter => {
+            chapter.photo_ids.forEach(photoId => {
+              const photo = photoById.get(photoId);
+              if (photo && !orderedPhotos.includes(photo)) orderedPhotos.push(photo);
+            });
+          });
+          photos.forEach(photo => {
+            if (!orderedPhotos.includes(photo)) orderedPhotos.push(photo);
+          });
+
           return {
             title: data.title || '我们的<br>回忆录',
-            photos: data.photos.map(photo => ({
-              id: photo.id || '',
-              src: photo.src,
-              caption: photo.caption || '值得珍藏的美好瞬间',
-              persisted: true
-            }))
+            photos: orderedPhotos,
+            chapters
           };
         } catch (e) {
           console.warn('[Album] failed to load uploaded album', e);
@@ -914,6 +1096,10 @@
       const historyPanel = document.getElementById('historyPanel');
       const musicBtn = document.getElementById('musicBtn');
       const book = document.getElementById('book');
+      const storylineModal = document.getElementById('storylineModal');
+      const storylineList = document.getElementById('storylineList');
+      const regenerateStorylineBtn = document.getElementById('regenerateStorylineBtn');
+      const confirmStorylineBtn = document.getElementById('confirmStorylineBtn');
 
       // --- BGM playback helpers (robust switching + better diagnostics) ---
       function safeResetAudio() {
@@ -1130,12 +1316,268 @@
         }));
       }
 
+      function ensurePhotoIds(photos) {
+        const stamp = Date.now().toString(36);
+        return photos.map((photo, i) => ({
+          ...photo,
+          id: photo.id || `p_${stamp}_${i}`
+        }));
+      }
+
+      function storylineTemplates(type) {
+        if (type === 'baby') {
+          return [
+            { title: '初见', description: '宝宝初来人世的美好瞬间' },
+            { title: '成长', description: '记录一点点变化和新本领' },
+            { title: '日常', description: '日常陪伴里的温馨片段' },
+            { title: '珍藏', description: '值得反复回看的幸福时刻' }
+          ];
+        }
+        if (type === 'wedding') {
+          return [
+            { title: '相遇', description: '故事开始时的心动瞬间' },
+            { title: '心动', description: '彼此靠近的浪漫片段' },
+            { title: '相守', description: '携手同行的温柔承诺' },
+            { title: '定格', description: '把幸福留在这一刻' }
+          ];
+        }
+        return [
+          { title: '开篇', description: '回忆从这些画面慢慢展开' },
+          { title: '日常', description: '平凡生活里的温暖片段' },
+          { title: '高光', description: '最值得停留的闪亮瞬间' },
+          { title: '珍藏', description: '留给以后反复回看的记忆' }
+        ];
+      }
+
+      function buildFallbackStoryline(photos, type) {
+        const ids = photos.map(photo => String(photo.id || '')).filter(Boolean);
+        if (ids.length === 0) return [];
+
+        let chapterCount = 1;
+        if (ids.length > 1 && ids.length <= 4) chapterCount = 2;
+        if (ids.length > 4 && ids.length <= 9) chapterCount = 3;
+        if (ids.length > 9) chapterCount = 4;
+
+        const templates = storylineTemplates(type);
+        const chunkSize = Math.ceil(ids.length / chapterCount);
+        const chapters = [];
+        for (let i = 0; i < chapterCount; i++) {
+          const photoIds = ids.slice(i * chunkSize, (i + 1) * chunkSize);
+          if (photoIds.length === 0) continue;
+          const template = templates[i] || templates[templates.length - 1];
+          chapters.push({
+            title: template.title,
+            description: template.description,
+            photo_ids: photoIds
+          });
+        }
+        return chapters;
+      }
+
+      function normalizeStoryline(chapters, photos, type) {
+        const ids = photos.map(photo => String(photo.id || '')).filter(Boolean);
+        const known = new Set(ids);
+        if (!Array.isArray(chapters) || ids.length === 0) {
+          return buildFallbackStoryline(photos, type);
+        }
+
+        const templates = storylineTemplates(type);
+        const used = new Set();
+        let normalized = chapters.map((chapter, i) => {
+          const template = templates[Math.min(i, templates.length - 1)];
+          const photoIds = [];
+          if (Array.isArray(chapter.photo_ids)) {
+            chapter.photo_ids.map(String).forEach(id => {
+              if (known.has(id) && !used.has(id)) {
+                photoIds.push(id);
+                used.add(id);
+              }
+            });
+          }
+          return {
+            title: String(chapter.title || template.title).slice(0, 24),
+            description: String(chapter.description || template.description).slice(0, 120),
+            photo_ids: photoIds
+          };
+        }).filter(chapter => chapter.photo_ids.length > 0);
+
+        const missing = ids.filter(id => !used.has(id));
+        if (missing.length > 0) {
+          if (normalized.length > 0) {
+            normalized[normalized.length - 1].photo_ids.push(...missing);
+          } else {
+            return buildFallbackStoryline(photos, type);
+          }
+        }
+
+        if (normalized.length > 4) {
+          const merged = normalized.slice(0, 4);
+          normalized.slice(4).forEach(chapter => {
+            merged[3].photo_ids.push(...chapter.photo_ids);
+          });
+          normalized = merged;
+        }
+
+        if (ids.length > 1 && normalized.length < 2) {
+          return buildFallbackStoryline(photos, type);
+        }
+        return normalized;
+      }
+
+      async function requestStoryline(photos, { albumType, title }) {
+        const payload = {
+          albumType,
+          title,
+          photos: photos.map(photo => ({
+            id: photo.id,
+            url: photo.src,
+            caption: photo.caption || ''
+          }))
+        };
+        const data = await fetchJsonWithTimeout('/api/storyline', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        }, 22000);
+        return normalizeStoryline(data.chapters, photos, albumType);
+      }
+
+      function orderPhotosByChapters(photos, chapters) {
+        const byId = new Map(photos.map(photo => [String(photo.id || ''), photo]));
+        const used = new Set();
+        const ordered = [];
+
+        chapters.forEach(chapter => {
+          if (!Array.isArray(chapter.photo_ids)) return;
+          chapter.photo_ids.forEach(rawId => {
+            const id = String(rawId);
+            const photo = byId.get(id);
+            if (photo && !used.has(id)) {
+              ordered.push(photo);
+              used.add(id);
+            }
+          });
+        });
+
+        photos.forEach(photo => {
+          const id = String(photo.id || '');
+          if (!used.has(id)) ordered.push(photo);
+        });
+        return ordered;
+      }
+
+      function renderStorylinePreview(photos, chapters) {
+        if (!storylineList) return;
+        const byId = new Map(photos.map(photo => [String(photo.id || ''), photo]));
+        storylineList.innerHTML = '';
+
+        chapters.forEach((chapter, index) => {
+          const card = document.createElement('section');
+          card.className = 'storyline-card';
+          card.dataset.photoIds = JSON.stringify(chapter.photo_ids || []);
+
+          const input = document.createElement('input');
+          input.className = 'storyline-title-input';
+          input.value = chapter.title || `第${index + 1}章`;
+          input.maxLength = 24;
+          input.setAttribute('aria-label', `第${index + 1}章标题`);
+          card.appendChild(input);
+
+          const description = document.createElement('div');
+          description.className = 'storyline-desc';
+          description.textContent = chapter.description || '这些照片组成了一段温暖回忆。';
+          card.appendChild(description);
+
+          const thumbs = document.createElement('div');
+          thumbs.className = 'storyline-thumbs';
+          (chapter.photo_ids || []).forEach(photoId => {
+            const photo = byId.get(String(photoId));
+            if (!photo) return;
+            const wrap = document.createElement('div');
+            wrap.className = 'storyline-thumb';
+            const img = document.createElement('img');
+            img.src = pickBestPhotoUrl(photo);
+            img.alt = photo.caption || '';
+            wrap.appendChild(img);
+            thumbs.appendChild(wrap);
+          });
+          card.appendChild(thumbs);
+          storylineList.appendChild(card);
+        });
+      }
+
+      function collectStorylineFromPreview(chapters) {
+        const cards = Array.from(storylineList.querySelectorAll('.storyline-card'));
+        return cards.map((card, i) => {
+          const input = card.querySelector('.storyline-title-input');
+          const description = card.querySelector('.storyline-desc');
+          let photoIds = [];
+          try {
+            photoIds = JSON.parse(card.dataset.photoIds || '[]');
+          } catch (_) {
+            photoIds = chapters[i]?.photo_ids || [];
+          }
+          return {
+            title: (input?.value || chapters[i]?.title || `第${i + 1}章`).trim() || `第${i + 1}章`,
+            description: description?.textContent || chapters[i]?.description || '',
+            photo_ids: photoIds
+          };
+        });
+      }
+
+      function showStorylinePreview(photos, initialChapters, { albumType, title }) {
+        const fallback = normalizeStoryline(initialChapters, photos, albumType);
+        if (!storylineModal || !storylineList || !regenerateStorylineBtn || !confirmStorylineBtn) {
+          return Promise.resolve(fallback);
+        }
+
+        return new Promise(resolve => {
+          let chapters = fallback;
+          const render = () => renderStorylinePreview(photos, chapters);
+          const cleanup = () => {
+            regenerateStorylineBtn.onclick = null;
+            confirmStorylineBtn.onclick = null;
+            storylineModal.classList.add('hidden');
+          };
+
+          regenerateStorylineBtn.disabled = false;
+          regenerateStorylineBtn.textContent = '重新生成';
+          confirmStorylineBtn.disabled = false;
+          render();
+          storylineModal.classList.remove('hidden');
+
+          regenerateStorylineBtn.onclick = async () => {
+            regenerateStorylineBtn.disabled = true;
+            confirmStorylineBtn.disabled = true;
+            regenerateStorylineBtn.textContent = '生成中...';
+            try {
+              chapters = await requestStoryline(photos, { albumType, title });
+            } catch (e) {
+              console.info('[Storyline] regenerate unavailable; using local storyline.', e);
+              chapters = buildFallbackStoryline(photos, albumType);
+            } finally {
+              render();
+              regenerateStorylineBtn.disabled = false;
+              confirmStorylineBtn.disabled = false;
+              regenerateStorylineBtn.textContent = '重新生成';
+            }
+          };
+
+          confirmStorylineBtn.onclick = () => {
+            chapters = normalizeStoryline(collectStorylineFromPreview(chapters), photos, albumType);
+            cleanup();
+            resolve(chapters);
+          };
+        });
+      }
+
       function createLocalPreviewPhotos(files, fallbackCaptions) {
         releaseUploadedObjectUrls();
         return files.map((file, i) => {
           const url = URL.createObjectURL(file);
           uploadedObjectUrls.push(url);
           return {
+            id: `local_${Date.now().toString(36)}_${i}`,
             src: url,
             caption: fallbackCaptions[i],
             persisted: false
@@ -1719,18 +2161,20 @@
 
         const albumTitle = "我们的<br>回忆录";
         const plainTitle = "我们的回忆录";
-        const fallbackCaptions = getCaptions(albumType || 'default', files.length);
+        const effectiveAlbumType = albumType === 'uploaded' ? 'default' : (albumType || 'default');
+        const fallbackCaptions = getCaptions(effectiveAlbumType, files.length);
         let photoData = [];
+        let chapters = [];
 
         try {
           showLoader('☁️ 正在上传照片...');
           setProgress(8, '☁️ 正在上传照片...');
-          photoData = await uploadFilesToServer(files);
+          photoData = ensurePhotoIds(await uploadFilesToServer(files));
           setProgress(45, `☁️ 上传完成，正在生成配文...`);
 
           try {
             photoData = await requestAICaptions(photoData, {
-              albumType: albumType || 'default',
+              albumType: effectiveAlbumType,
               title: plainTitle,
               fallbackCaptions
             });
@@ -1743,25 +2187,48 @@
             }));
             setProgress(72, '🪄 已使用本地配文');
           }
-
-          if (persistUploadedAlbum(photoData, albumTitle)) {
-            albumType = 'uploaded';
-            const newUrl = `${window.location.pathname}?album=uploaded`;
-            window.history.replaceState({ path: newUrl }, '', newUrl);
-          }
         } catch (uploadError) {
           console.info('[Upload] backend unavailable; using local preview.', uploadError);
           setProgress(35, '📸 后端不可用，改用本地预览...');
-          photoData = createLocalPreviewPhotos(files, fallbackCaptions);
+          photoData = ensurePhotoIds(createLocalPreviewPhotos(files, fallbackCaptions));
         }
 
+        setProgress(82, '🧭 AI 正在规划故事线...');
+        try {
+          chapters = await requestStoryline(photoData, {
+            albumType: effectiveAlbumType,
+            title: plainTitle
+          });
+          setProgress(88, '🧭 故事线生成完成');
+        } catch (storylineError) {
+          console.info('[Storyline] unavailable; using local storyline.', storylineError);
+          chapters = buildFallbackStoryline(photoData, effectiveAlbumType);
+          setProgress(88, '🧭 已生成本地故事线');
+        }
+
+        hideLoader();
+        chapters = await showStorylinePreview(photoData, chapters, {
+          albumType: effectiveAlbumType,
+          title: plainTitle
+        });
+        photoData = orderPhotosByChapters(photoData, chapters);
+
+        if (persistUploadedAlbum(photoData, albumTitle, chapters)) {
+          albumType = 'uploaded';
+          const newUrl = `${window.location.pathname}?album=uploaded`;
+          window.history.replaceState({ path: newUrl }, '', newUrl);
+        }
+
+        showLoader('🎼 正在推荐主题和音乐...');
+        setProgress(92, '🎼 正在推荐主题和音乐...');
         await applyLLMRecommendationForAlbum({
-          albumType: albumType === 'uploaded' ? 'default' : albumType,
+          albumType: effectiveAlbumType,
           title: plainTitle,
           photos: photoData,
           captions: photoData.map(p => p.caption)
         });
 
+        setProgress(96, '📖 正在生成相册...');
         await enterAlbum(photoData, albumTitle, { force: true });
         photoUpload.value = '';
       };
