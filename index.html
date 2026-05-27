@@ -712,10 +712,121 @@
       let recommendedThemeId = null;
       let recommendedTrackSrc = null;
       let uploadedObjectUrls = [];
+      const UPLOADED_ALBUM_KEY = 'v23_uploaded_album';
 
       function releaseUploadedObjectUrls() {
         uploadedObjectUrls.forEach(url => URL.revokeObjectURL(url));
         uploadedObjectUrls = [];
+      }
+
+      const captionPools = {
+        baby: [
+          "初见你的第一眼，世界都亮了。",
+          "小小的手心，牵动着全家人的心。",
+          "看你可爱的模样，心都被融化了。",
+          "第一次翻身，全家人都为你鼓掌。",
+          "满月啦！愿你平安喜乐，岁岁年年。",
+          "你是坠入凡间的小天使，带着满身星光。",
+          "愿你眼里有星辰，心中有良善。",
+          "小脚丫，大梦想，一步一个脚印去探索世界。",
+          "你是上天赐予我们最珍贵的礼物。",
+          "看你一天天长大，是这个世界上最幸福的事。",
+          "小小的脸庞，大大的好奇，这个世界真奇妙。",
+          "你是我们生命中的阳光，照亮了所有的角落。",
+          "愿你的童年充满欢笑，无忧无虑。",
+          "每一声啼哭都是成长的节奏，每一张笑脸都是爱的馈赠。",
+          "宝贝，愿你慢慢长大，被这世界温柔相待。",
+          "你的每一个小动作，都在诉说着生命的奇迹。",
+          "你是星辰大海，是我们永远的牵挂。",
+          "陪伴你成长的每一刻，都值得被永远铭记。",
+          "你是未来的希望，是绽放在我们心尖的花朵。",
+          "愿你此生尽兴，赤诚善良。"
+        ],
+        wedding: [
+          "执子之手，与子偕老。",
+          "往后余生，全都是你。",
+          "星光坠入眼里，而你落进我心里。",
+          "人间烟火，山河远阔，无一是你，无一不是你。",
+          "遇见你的那一天，风都很甜。",
+          "从今以后，晨昏是你，四季也是你。",
+          "你是平淡生活里的英雄梦想。",
+          "众生皆苦，唯你是草莓味。",
+          "我的世界因为有你，才变得完整。",
+          "爱是心动，更是余生漫长的相守。",
+          "你是这世间所有的温柔与浪漫。",
+          "陪你走过漫漫长路，直到白发苍苍。",
+          "愿得一人心，白首不相离。",
+          "你是我的满目星河，也是我的余生所向。",
+          "爱情最好的样子，就是你在闹，我在笑。",
+          "这一刻的誓言，我们将用一生去守护。",
+          "无论贫穷富有，无论健康疾病，我永远爱你。",
+          "感谢命运让我们相遇，感谢你出现在我的生命里。",
+          "你是我的唯一，也是我的全部。",
+          "愿我们的爱情，如初见般美好，如岁月般绵长。"
+        ],
+        default: [
+          "精选瞬间 ✨", "温暖回忆 ☀️", "这一刻，永恒 🕊️", "时光不老，我们不散。",
+          "记录美好的点点滴滴。", "留住最灿烂的笑容。", "岁月静好，现世安稳。",
+          "每一个瞬间都值得被珍藏。", "生活中的小确幸。", "愿美好如期而至。"
+        ]
+      };
+
+      function shuffleArray(array) {
+        const arr = [...array];
+        for (let i = arr.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [arr[i], arr[j]] = [arr[j], arr[i]];
+        }
+        return arr;
+      }
+
+      function getCaptions(type, count) {
+        const pool = captionPools[type] || captionPools.default;
+        let result = [];
+        while (result.length < count) {
+          result = result.concat(shuffleArray(pool));
+        }
+        return result.slice(0, count);
+      }
+
+      function persistUploadedAlbum(photos, title) {
+        const persistedPhotos = photos
+          .filter(photo => photo && photo.persisted && photo.src)
+          .map(photo => ({
+            id: photo.id || '',
+            src: photo.src,
+            caption: photo.caption || ''
+          }));
+
+        if (persistedPhotos.length === 0) return false;
+
+        localStorage.setItem(UPLOADED_ALBUM_KEY, JSON.stringify({
+          title,
+          photos: persistedPhotos,
+          createdAt: Date.now()
+        }));
+        return true;
+      }
+
+      function loadUploadedAlbum() {
+        try {
+          const raw = localStorage.getItem(UPLOADED_ALBUM_KEY);
+          if (!raw) return null;
+          const data = JSON.parse(raw);
+          if (!Array.isArray(data.photos) || data.photos.length === 0) return null;
+          return {
+            title: data.title || '我们的<br>回忆录',
+            photos: data.photos.map(photo => ({
+              id: photo.id || '',
+              src: photo.src,
+              caption: photo.caption || '值得珍藏的美好瞬间',
+              persisted: true
+            }))
+          };
+        } catch (e) {
+          console.warn('[Album] failed to load uploaded album', e);
+          return null;
+        }
       }
 
       // --- Photo load policy ---
@@ -965,6 +1076,71 @@
 
       function hideLoader() {
         document.body.classList.remove('show-loader');
+      }
+
+      async function fetchJsonWithTimeout(url, options = {}, timeoutMs = 15000) {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeoutMs);
+        try {
+          const res = await fetch(url, { ...options, signal: controller.signal });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          return await res.json();
+        } finally {
+          clearTimeout(timer);
+        }
+      }
+
+      async function uploadFilesToServer(files) {
+        const formData = new FormData();
+        files.forEach(file => formData.append('files', file));
+        const data = await fetchJsonWithTimeout('/api/upload', {
+          method: 'POST',
+          body: formData
+        }, 30000);
+
+        if (!data || !Array.isArray(data.photos) || data.photos.length === 0) {
+          throw new Error('Empty upload response');
+        }
+
+        return data.photos.map((photo, i) => ({
+          id: photo.id || String(i),
+          src: photo.url,
+          caption: '',
+          persisted: true
+        }));
+      }
+
+      async function requestAICaptions(photos, { albumType, title, fallbackCaptions }) {
+        const payload = {
+          albumType,
+          title,
+          photos: photos.map(photo => ({ id: photo.id, url: photo.src }))
+        };
+        const data = await fetchJsonWithTimeout('/api/captions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        }, 45000);
+
+        const captions = Array.isArray(data.captions) ? data.captions : [];
+        const byId = new Map(captions.map(item => [item.id, item.caption]));
+        return photos.map((photo, i) => ({
+          ...photo,
+          caption: byId.get(photo.id) || captions[i]?.caption || fallbackCaptions[i] || '值得珍藏的美好瞬间'
+        }));
+      }
+
+      function createLocalPreviewPhotos(files, fallbackCaptions) {
+        releaseUploadedObjectUrls();
+        return files.map((file, i) => {
+          const url = URL.createObjectURL(file);
+          uploadedObjectUrls.push(url);
+          return {
+            src: url,
+            caption: fallbackCaptions[i],
+            persisted: false
+          };
+        });
       }
 
       function pickBestPhotoUrl(photo) {
@@ -1253,7 +1429,7 @@
         console.log("Asking LLM to recommend for:", payload.albumType);
         const fallback = getLocalRecommendation(payload.albumType);
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 1500);
+        const timeoutId = setTimeout(() => controller.abort(), 8000);
 
         try {
           const res = await fetch('/api/recommend', {
@@ -1402,7 +1578,23 @@
           return result.slice(0, count);
         };
 
-        if (albumType === 'baby') {
+        if (albumType === 'uploaded') {
+          const savedAlbum = loadUploadedAlbum();
+          if (savedAlbum) {
+            if (!hasPersistedSettings) {
+              await applyLLMRecommendationForAlbum({
+                albumType: 'default',
+                title: savedAlbum.title.replace(/<br\s*\/?>/gi, ' '),
+                photos: savedAlbum.photos,
+                captions: savedAlbum.photos.map(p => p.caption)
+              });
+            }
+            await enterAlbum(savedAlbum.photos, savedAlbum.title, { force: true });
+          } else {
+            albumType = 'default';
+            window.history.replaceState({}, '', window.location.pathname);
+          }
+        } else if (albumType === 'baby') {
           // Story-driven photo order: narrative arc from "初见" to "成长"
           // Grouped by chapters, alternating themes for visual rhythm
           const storyOrder = [
@@ -1525,18 +1717,53 @@
         const files = Array.from(e.target.files);
         if (files.length === 0) return;
 
-        releaseUploadedObjectUrls();
-        const uploadCaptions = getCaptions(albumType || 'default', files.length);
-        const photoData = files.map((file, i) => ({
-          src: (() => {
-            const url = URL.createObjectURL(file);
-            uploadedObjectUrls.push(url);
-            return url;
-          })(),
-          caption: uploadCaptions[i]
-        }));
+        const albumTitle = "我们的<br>回忆录";
+        const plainTitle = "我们的回忆录";
+        const fallbackCaptions = getCaptions(albumType || 'default', files.length);
+        let photoData = [];
 
-        await enterAlbum(photoData, "我们的<br>回忆录", { force: true });
+        try {
+          showLoader('☁️ 正在上传照片...');
+          setProgress(8, `☁️ 正在上传照片... (0/${files.length})`);
+          photoData = await uploadFilesToServer(files);
+          setProgress(45, `☁️ 上传完成，正在生成配文...`);
+
+          try {
+            photoData = await requestAICaptions(photoData, {
+              albumType: albumType || 'default',
+              title: plainTitle,
+              fallbackCaptions
+            });
+            setProgress(72, '🪄 AI 配文生成完成');
+          } catch (captionError) {
+            console.info('[Caption] unavailable; using local captions.', captionError);
+            photoData = photoData.map((photo, i) => ({
+              ...photo,
+              caption: fallbackCaptions[i] || '值得珍藏的美好瞬间'
+            }));
+            setProgress(72, '🪄 已使用本地配文');
+          }
+
+          if (persistUploadedAlbum(photoData, albumTitle)) {
+            albumType = 'uploaded';
+            const newUrl = `${window.location.pathname}?album=uploaded`;
+            window.history.replaceState({ path: newUrl }, '', newUrl);
+          }
+        } catch (uploadError) {
+          console.info('[Upload] backend unavailable; using local preview.', uploadError);
+          setProgress(35, '📸 后端不可用，改用本地预览...');
+          photoData = createLocalPreviewPhotos(files, fallbackCaptions);
+        }
+
+        await applyLLMRecommendationForAlbum({
+          albumType: albumType === 'uploaded' ? 'default' : albumType,
+          title: plainTitle,
+          photos: photoData,
+          captions: photoData.map(p => p.caption)
+        });
+
+        await enterAlbum(photoData, albumTitle, { force: true });
+        photoUpload.value = '';
       };
 
       document.getElementById('nextBtn').onclick = () => { 

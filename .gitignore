@@ -8,5 +8,6 @@ __pycache__/
 *.py[cod]
 
 node_modules/
+uploads/
 .DS_Store
 Thumbs.db
