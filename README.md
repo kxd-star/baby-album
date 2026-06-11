@@ -26,6 +26,8 @@ ARK_VISION_MODEL=your_vision_endpoint
 ARK_TEXT_MODEL=your_text_endpoint
 PUBLIC_BASE_URL=https://album.example.com
 ALLOWED_ORIGINS=https://album.example.com
+SESSION_SECRET=请使用至少32位随机字符串
+SESSION_COOKIE_SECURE=true
 ```
 
 启动：
@@ -63,10 +65,15 @@ S3_ENDPOINT_URL=https://your-s3-endpoint
 S3_ACCESS_KEY_ID=your-access-key
 S3_SECRET_ACCESS_KEY=your-secret-key
 S3_REGION=auto
-S3_PUBLIC_BASE_URL=https://cdn.example.com
 ```
 
-`S3_PUBLIC_BASE_URL` 必须能被浏览器和视觉模型公开访问。
+对象存储保持私有。浏览器只能访问当前匿名用户自己的图片，视觉模型通过短期签名地址读取图片。
+
+## 用户数据隔离
+
+服务端会为每个浏览器签发带签名的匿名会话 Cookie。上传文件按匿名用户 ID 分目录保存，其他用户即使拿到图片 URL 也无法访问。AI 识图使用短期签名 URL。
+
+这能隔离不同设备和不同浏览器会话；若需要同一设备切换账号、跨设备同步或账号找回，还需要继续接入登录系统并将匿名用户 ID 绑定到正式用户账号。
 
 ## 前后端分离
 
