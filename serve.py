@@ -3,23 +3,30 @@ import json
 import mimetypes
 import os
 import uuid
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 import httpx
 import uvicorn
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 from pydantic import BaseModel
 from starlette.responses import FileResponse
+
+try:
+    import boto3
+except ImportError:
+    boto3 = None
 
 
 app = FastAPI()
 ROOT_DIR = Path(__file__).resolve().parent
 UPLOAD_DIR = ROOT_DIR / "uploads"
 MAX_UPLOAD_BYTES = int(os.environ.get("MAX_UPLOAD_BYTES", str(8 * 1024 * 1024)))
+MAX_UPLOAD_FILES = int(os.environ.get("MAX_UPLOAD_FILES", "30"))
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
 CAPTION_CONCURRENCY = int(os.environ.get("CAPTION_CONCURRENCY", "4"))
 
@@ -82,6 +89,14 @@ def make_public_url(request: Request, path: str) -> str:
     return f"{get_public_base_url(request)}{path}"
 
 
+def get_storage_public_base_url() -> str:
+    return os.environ.get("S3_PUBLIC_BASE_URL", "").strip().rstrip("/")
+
+
+def storage_mode() -> str:
+    return "s3" if os.environ.get("S3_BUCKET", "").strip() else "local"
+
+
 def normalize_same_origin_asset_url(request: Request, raw_url: str) -> str | None:
     if not raw_url:
         return None
@@ -89,6 +104,10 @@ def normalize_same_origin_asset_url(request: Request, raw_url: str) -> str | Non
     raw_url = raw_url.strip()
     parsed = urlparse(raw_url)
     if parsed.scheme in ("http", "https"):
+        storage_base = get_storage_public_base_url()
+        if storage_base and (raw_url == storage_base or raw_url.startswith(storage_base + "/")):
+            return raw_url
+
         base = urlparse(get_public_base_url(request))
         if parsed.netloc != base.netloc:
             return None
@@ -103,6 +122,74 @@ def normalize_same_origin_asset_url(request: Request, raw_url: str) -> str | Non
         return None
 
     return make_public_url(request, path)
+
+
+def sniff_image_content_type(data: bytes) -> str | None:
+    if data.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if data.startswith((b"GIF87a", b"GIF89a")):
+        return "image/gif"
+    if len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    return None
+
+
+async def read_upload_bytes(file: UploadFile) -> bytes:
+    chunks: list[bytes] = []
+    size = 0
+    while True:
+        chunk = await file.read(1024 * 1024)
+        if not chunk:
+            break
+        size += len(chunk)
+        if size > MAX_UPLOAD_BYTES:
+            raise HTTPException(status_code=413, detail="Image is too large")
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
+@lru_cache(maxsize=1)
+def get_s3_client():
+    if storage_mode() != "s3":
+        return None
+    if boto3 is None:
+        raise RuntimeError("boto3 is required when S3_BUCKET is configured")
+
+    return boto3.client(
+        "s3",
+        endpoint_url=os.environ.get("S3_ENDPOINT_URL") or None,
+        aws_access_key_id=os.environ.get("S3_ACCESS_KEY_ID") or os.environ.get("AWS_ACCESS_KEY_ID"),
+        aws_secret_access_key=os.environ.get("S3_SECRET_ACCESS_KEY") or os.environ.get("AWS_SECRET_ACCESS_KEY"),
+        region_name=os.environ.get("S3_REGION") or os.environ.get("AWS_DEFAULT_REGION") or "auto",
+    )
+
+
+async def persist_upload(request: Request, filename: str, data: bytes, content_type: str) -> str:
+    if storage_mode() == "s3":
+        bucket = os.environ.get("S3_BUCKET", "").strip()
+        public_base = get_storage_public_base_url()
+        if not public_base:
+            raise RuntimeError("S3_PUBLIC_BASE_URL is required when S3_BUCKET is configured")
+
+        key_prefix = os.environ.get("S3_KEY_PREFIX", "uploads").strip().strip("/")
+        key = f"{key_prefix}/{filename}" if key_prefix else filename
+        client = get_s3_client()
+        await asyncio.to_thread(
+            client.put_object,
+            Bucket=bucket,
+            Key=key,
+            Body=data,
+            ContentType=content_type,
+            CacheControl="public, max-age=31536000, immutable",
+        )
+        return f"{public_base}/{quote(key, safe='/')}"
+
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    path = UPLOAD_DIR / filename
+    await asyncio.to_thread(path.write_bytes, data)
+    return make_public_url(request, f"/uploads/{filename}")
 
 
 def safe_json_from_text(content: str) -> dict[str, Any]:
@@ -275,8 +362,8 @@ def normalize_storyline_chapters(
     return chapters
 
 
-def uploaded_filename_for(file: UploadFile) -> str:
-    content_type = (file.content_type or "").lower()
+def uploaded_filename_for(file: UploadFile, content_type: str | None = None) -> str:
+    content_type = (content_type or file.content_type or "").lower()
     guessed_ext = mimetypes.guess_extension(content_type) or ""
     original_ext = Path(file.filename or "").suffix.lower()
     ext = guessed_ext if guessed_ext in {".jpg", ".jpeg", ".png", ".webp", ".gif"} else original_ext
@@ -291,38 +378,31 @@ def uploaded_filename_for(file: UploadFile) -> str:
 async def upload_photos(request: Request, files: list[UploadFile] = File(...)):
     if not files:
         raise HTTPException(status_code=400, detail="No files uploaded")
+    if len(files) > MAX_UPLOAD_FILES:
+        raise HTTPException(status_code=400, detail=f"Upload at most {MAX_UPLOAD_FILES} images")
 
-    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     photos = []
 
     for file in files:
-        content_type = (file.content_type or "").lower()
-        if content_type not in ALLOWED_IMAGE_TYPES:
-            raise HTTPException(status_code=400, detail=f"Unsupported image type: {content_type}")
+        data = await read_upload_bytes(file)
+        content_type = sniff_image_content_type(data)
+        if not content_type or content_type not in ALLOWED_IMAGE_TYPES:
+            raise HTTPException(status_code=400, detail="Unsupported or invalid image")
 
-        filename = uploaded_filename_for(file)
-        path = UPLOAD_DIR / filename
-        size = 0
+        filename = uploaded_filename_for(file, content_type)
+        photo_id = Path(filename).stem
 
-        with path.open("wb") as out:
-            while True:
-                chunk = await file.read(1024 * 1024)
-                if not chunk:
-                    break
-                size += len(chunk)
-                if size > MAX_UPLOAD_BYTES:
-                    out.close()
-                    path.unlink(missing_ok=True)
-                    raise HTTPException(status_code=413, detail="Image is too large")
-                out.write(chunk)
+        try:
+            url = await persist_upload(request, filename, data, content_type)
+        except Exception as e:
+            print("Upload persistence failed:", repr(e))
+            raise HTTPException(status_code=503, detail="Upload storage is unavailable") from e
 
-        photo_id = path.stem
-        url = f"/uploads/{filename}"
         photos.append({
             "id": photo_id,
             "url": url,
-            "absoluteUrl": make_public_url(request, url),
-            "size": size,
+            "absoluteUrl": url,
+            "size": len(data),
             "contentType": content_type,
         })
 
@@ -331,6 +411,8 @@ async def upload_photos(request: Request, files: list[UploadFile] = File(...)):
 
 @app.get("/uploads/{filename}")
 async def serve_upload(filename: str):
+    if storage_mode() != "local":
+        return HTMLResponse("Not Found", status_code=404)
     if "/" in filename or "\\" in filename:
         return HTMLResponse("Not Found", status_code=404)
 
@@ -503,25 +585,61 @@ async def recommend(request: Request):
         return JSONResponse({"themeId": "", "trackSrc": ""})
 
 
-@app.get("/{path:path}")
-async def serve_static(path: str):
-    if not path or path == "/":
-        path = "index.html"
+@app.get("/api/health")
+async def health():
+    return JSONResponse({
+        "ok": True,
+        "storage": storage_mode(),
+        "visionConfigured": bool(get_ark_config(vision=True)),
+        "textConfigured": bool(get_ark_config(vision=False)),
+    })
 
-    file_path = (ROOT_DIR / path).resolve()
-    if ROOT_DIR not in file_path.parents and file_path != ROOT_DIR:
+
+def safe_public_file(base_dir: Path, path: str) -> FileResponse | HTMLResponse:
+    file_path = (base_dir / path).resolve()
+    if base_dir.resolve() not in file_path.parents:
         return HTMLResponse("Not Found", status_code=404)
+    if not file_path.exists() or not file_path.is_file():
+        return HTMLResponse("Not Found", status_code=404)
+    return FileResponse(file_path)
 
-    if file_path.exists() and file_path.is_file():
-        if path == "index.html":
-            with open(file_path, "r", encoding="utf-8") as f:
-                content = f.read()
-            return HTMLResponse(content=content, headers={
-                "Cache-Control": "no-cache, no-store, must-revalidate",
-                "Pragma": "no-cache",
-                "Expires": "0",
-            })
-        return FileResponse(file_path)
+
+@app.get("/")
+@app.get("/index.html")
+async def serve_index():
+    file_path = ROOT_DIR / "index.html"
+    if not file_path.exists():
+        return HTMLResponse("Not Found", status_code=404)
+    content = file_path.read_text(encoding="utf-8")
+    return HTMLResponse(content=content, headers={
+        "Cache-Control": "no-cache, no-store, must-revalidate",
+        "Pragma": "no-cache",
+        "Expires": "0",
+    })
+
+
+@app.get("/config.js")
+async def serve_config():
+    api_base = os.environ.get("FRONTEND_API_BASE_URL", "").strip().rstrip("/")
+    return PlainTextResponse(
+        f"window.ALBUM_API_BASE_URL = {json.dumps(api_base)};\n",
+        media_type="application/javascript",
+        headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+    )
+
+
+@app.get("/sw.js")
+async def serve_service_worker():
+    return safe_public_file(ROOT_DIR, "sw.js")
+
+
+@app.get("/assets/{path:path}")
+async def serve_assets(path: str):
+    return safe_public_file(ROOT_DIR / "assets", path)
+
+
+@app.get("/{path:path}")
+async def not_found(path: str):
     return HTMLResponse("Not Found", status_code=404)
 
 

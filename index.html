@@ -4,6 +4,7 @@
   <meta charset="utf-8" />
   <title>✨ AI 动态相册生成器 · 创作中心</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <script src="./config.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&family=Ma+Shan+Zheng&family=Noto+Serif+SC:wght@700&family=ZCOOL+KuaiLe&display=swap" rel="stylesheet">
@@ -492,6 +493,46 @@
     .photo-container img { width: 92%; height: auto; max-height: 92%; object-fit: contain; border: 8px solid white; box-shadow: 0 8px 25px var(--shadow); }
     .photo-container img.album-photo { opacity: 1; }
     .caption { font-size: 1rem; text-align: center; font-weight: 700; color: var(--text); min-height: 50px; display: flex; align-items: center; }
+    .chapter-side {
+      background: var(--cover-bg);
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+    }
+    .chapter-content {
+      width: 100%;
+      padding: 36px 28px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 18px;
+    }
+    .chapter-number {
+      font-size: 0.78rem;
+      font-weight: 900;
+      opacity: 0.72;
+      letter-spacing: 1px;
+    }
+    .chapter-page-title {
+      font-family: var(--font-display);
+      font-size: 2.5rem;
+      line-height: 1.15;
+      overflow-wrap: anywhere;
+    }
+    .chapter-page-description {
+      max-width: 280px;
+      font-size: 0.95rem;
+      line-height: 1.7;
+      opacity: 0.9;
+    }
+    .chapter-photo-count {
+      border-top: 1px solid rgba(255,255,255,0.35);
+      padding-top: 14px;
+      font-size: 0.78rem;
+      opacity: 0.72;
+    }
 
     .cover-side { background: var(--cover-bg); color: white; border: none; display: flex; align-items: center; justify-content: center; }
     .cover-title { font-size: 3rem; font-weight: 900; text-align: center; font-family: var(--font-display); line-height: 1.1; }
@@ -864,6 +905,29 @@
       let recommendedTrackSrc = null;
       let uploadedObjectUrls = [];
       const UPLOADED_ALBUM_KEY = 'v23_uploaded_album';
+      const API_BASE_URL = String(window.ALBUM_API_BASE_URL || '').replace(/\/+$/, '');
+
+      function apiUrl(path) {
+        const normalizedPath = String(path || '').startsWith('/') ? String(path) : `/${path}`;
+        return API_BASE_URL ? `${API_BASE_URL}${normalizedPath}` : normalizedPath;
+      }
+
+      function escapeHtml(value) {
+        return String(value ?? '')
+          .replaceAll('&', '&amp;')
+          .replaceAll('<', '&lt;')
+          .replaceAll('>', '&gt;')
+          .replaceAll('"', '&quot;')
+          .replaceAll("'", '&#039;');
+      }
+
+      function formatAlbumTitle(value) {
+        return String(value || '我们的回忆录')
+          .replace(/\n/g, '<br>')
+          .split(/<br\s*\/?>/gi)
+          .map(escapeHtml)
+          .join('<br>');
+      }
 
       function releaseUploadedObjectUrls() {
         uploadedObjectUrls.forEach(url => URL.revokeObjectURL(url));
@@ -969,6 +1033,8 @@
           title,
           photos: persistedPhotos,
           chapters: sanitizeChaptersForStorage(chapters, persistedIds),
+          theme: currentTheme,
+          track: currentTrack,
           createdAt: Date.now()
         }));
         return true;
@@ -1003,7 +1069,9 @@
           return {
             title: data.title || '我们的<br>回忆录',
             photos: orderedPhotos,
-            chapters
+            chapters,
+            theme: String(data.theme || ''),
+            track: String(data.track || '')
           };
         } catch (e) {
           console.warn('[Album] failed to load uploaded album', e);
@@ -1017,8 +1085,8 @@
 
       function buildPhotoMarkup(photo) {
         if (!photo || !photo.src) return '';
-        const src = String(photo.src);
-        const webp = photo.srcWebp ? String(photo.srcWebp) : '';
+        const src = escapeHtml(photo.src);
+        const webp = photo.srcWebp ? escapeHtml(photo.srcWebp) : '';
 
         if (webp) {
           return `<div class="photo-container"><picture><source type="image/webp" srcset="${webp}"><img class="album-photo" src="${src}" alt="" loading="eager" decoding="async"></picture></div>`;
@@ -1279,7 +1347,7 @@
       async function uploadFilesToServer(files) {
         const formData = new FormData();
         files.forEach(file => formData.append('files', file));
-        const data = await fetchJsonWithTimeout('/api/upload', {
+        const data = await fetchJsonWithTimeout(apiUrl('/api/upload'), {
           method: 'POST',
           body: formData
         }, 30000);
@@ -1302,7 +1370,7 @@
           title,
           photos: photos.map(photo => ({ id: photo.id, url: photo.src }))
         };
-        const data = await fetchJsonWithTimeout('/api/captions', {
+        const data = await fetchJsonWithTimeout(apiUrl('/api/captions'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
@@ -1434,7 +1502,7 @@
             caption: photo.caption || ''
           }))
         };
-        const data = await fetchJsonWithTimeout('/api/storyline', {
+        const data = await fetchJsonWithTimeout(apiUrl('/api/storyline'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
@@ -1749,7 +1817,61 @@
 
       }
 
-      function generateAlbum(photoData, title = "我们的回忆录") {
+      function buildPhotoSide(photo, fallbackCaption) {
+        return {
+          className: '',
+          content: `
+            <div class="content-box">
+              ${buildPhotoMarkup(photo)}
+              <div class="caption">${escapeHtml(photo.caption || fallbackCaption)}</div>
+            </div>
+          `
+        };
+      }
+
+      function buildChapterSide(chapter, index, count) {
+        return {
+          className: 'chapter-side',
+          content: `
+            <div class="chapter-content">
+              <div class="chapter-number">CHAPTER ${String(index + 1).padStart(2, '0')}</div>
+              <h2 class="chapter-page-title">${escapeHtml(chapter.title || `第${index + 1}章`)}</h2>
+              <p class="chapter-page-description">${escapeHtml(chapter.description || '这些照片组成了一段温暖回忆。')}</p>
+              <div class="chapter-photo-count">${count} 张照片</div>
+            </div>
+          `
+        };
+      }
+
+      function buildStorySides(photoData, chapters) {
+        const byId = new Map(photoData.map(photo => [String(photo.id || ''), photo]));
+        const used = new Set();
+        const sides = [];
+
+        (Array.isArray(chapters) ? chapters : []).forEach((chapter, index) => {
+          const chapterPhotos = [];
+          (chapter.photo_ids || []).forEach(rawId => {
+            const id = String(rawId);
+            const photo = byId.get(id);
+            if (photo && !used.has(id)) {
+              chapterPhotos.push(photo);
+              used.add(id);
+            }
+          });
+          if (chapterPhotos.length === 0) return;
+
+          sides.push(buildChapterSide(chapter, index, chapterPhotos.length));
+          chapterPhotos.forEach(photo => sides.push(buildPhotoSide(photo, '精选瞬间 ✨')));
+        });
+
+        photoData.forEach(photo => {
+          const id = String(photo.id || '');
+          if (!used.has(id)) sides.push(buildPhotoSide(photo, '温暖回忆 ☀️'));
+        });
+        return sides;
+      }
+
+      function generateAlbum(photoData, title = "我们的回忆录", chapters = []) {
         book.innerHTML = '';
         
         let introTitle = "致 特别的你";
@@ -1772,7 +1894,7 @@
         };
         coverPage.innerHTML = `
           <div class="page-side page-front cover-side">
-            <div class="cover-title">${title.replace('\n', '<br>')}</div>
+            <div class="cover-title">${formatAlbumTitle(title)}</div>
           </div>
           <div class="page-side page-back centered-box">
             <div class="content-box centered-box">
@@ -1783,8 +1905,9 @@
         `;
         book.appendChild(coverPage);
 
-        // 2. Photos (Pairs)
-        for (let i = 0; i < photoData.length; i += 2) {
+        // 2. AI story chapters and photos (paired into physical pages)
+        const storySides = buildStorySides(photoData, chapters);
+        for (let i = 0; i < storySides.length; i += 2) {
           const photoPage = document.createElement('div');
           photoPage.className = 'page';
           const pIndex = book.querySelectorAll('.page').length;
@@ -1799,33 +1922,20 @@
             }
           };
 
-          let frontContent = `
-            <div class="content-box">
-              ${buildPhotoMarkup(photoData[i])}
-              <div class="caption">${photoData[i].caption || '精选瞬间 ✨'}</div>
-            </div>
-          `;
-          
-          let backContent = '';
-          if (i + 1 < photoData.length) {
-            backContent = `
-              <div class="content-box">
-                ${buildPhotoMarkup(photoData[i+1])}
-                <div class="caption">${photoData[i+1].caption || '温暖回忆 ☀️'}</div>
-              </div>
-            `;
-          } else {
-            backContent = `
+          const frontSide = storySides[i];
+          const backSide = storySides[i + 1] || {
+            className: '',
+            content: `
               <div class="content-box centered-box">
                 <h3>记录点滴</h3>
                 <p>愿每一份快乐都能被定格。</p>
               </div>
-            `;
-          }
+            `
+          };
 
           photoPage.innerHTML = `
-            <div class="page-side page-front">${frontContent}</div>
-            <div class="page-side page-back">${backContent}</div>
+            <div class="page-side page-front ${frontSide.className}">${frontSide.content}</div>
+            <div class="page-side page-back ${backSide.className}">${backSide.content}</div>
           `;
           book.appendChild(photoPage);
         }
@@ -1874,7 +1984,7 @@
         const timeoutId = setTimeout(() => controller.abort(), 8000);
 
         try {
-          const res = await fetch('/api/recommend', {
+          const res = await fetch(apiUrl('/api/recommend'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
@@ -2023,6 +2133,17 @@
         if (albumType === 'uploaded') {
           const savedAlbum = loadUploadedAlbum();
           if (savedAlbum) {
+            if (savedAlbum.theme && themes.some(theme => theme.id === savedAlbum.theme)) {
+              currentTheme = savedAlbum.theme;
+              themes.forEach(theme => document.body.classList.remove(`theme-${theme.id}`));
+              document.body.classList.add(`theme-${currentTheme}`);
+            }
+            if (savedAlbum.track && tracks.some(track => track.src === savedAlbum.track)) {
+              currentTrack = savedAlbum.track;
+              bgm.src = currentTrack;
+            }
+            renderThemes();
+            renderMusic();
             if (!hasPersistedSettings) {
               await applyLLMRecommendationForAlbum({
                 albumType: 'default',
@@ -2031,7 +2152,10 @@
                 captions: savedAlbum.photos.map(p => p.caption)
               });
             }
-            await enterAlbum(savedAlbum.photos, savedAlbum.title, { force: true });
+            await enterAlbum(savedAlbum.photos, savedAlbum.title, {
+              force: true,
+              chapters: savedAlbum.chapters
+            });
           } else {
             albumType = 'default';
             window.history.replaceState({}, '', window.location.pathname);
@@ -2120,7 +2244,7 @@
         }
       }
 
-      async function enterAlbum(photos, title, { force } = { force: false }) {
+      async function enterAlbum(photos, title, { force = false, chapters = [] } = {}) {
         // 1) 强力预加载：确保图片在任何重排/3D 变换前已完成 onload（或超时兜底）
         showLoader('📸 正在加载照片...');
         await preloadAlbumPhotos(photos, { overallTimeoutMs: 15000, perImageTimeoutMs: 8000 });
@@ -2129,7 +2253,7 @@
         // Once photos are generated and loaded, Theme/Music switching should never rebuild `.book`.
         // Only regenerate when explicitly forced (e.g. user uploads a new set).
         if (!albumGeneratedOnce || force) {
-          generateAlbum(photos, title);
+          generateAlbum(photos, title, chapters);
         }
 
         // 3) 进一步 warm decode，降低“已下载但未解码”的短暂白屏
@@ -2213,12 +2337,6 @@
         });
         photoData = orderPhotosByChapters(photoData, chapters);
 
-        if (persistUploadedAlbum(photoData, albumTitle, chapters)) {
-          albumType = 'uploaded';
-          const newUrl = `${window.location.pathname}?album=uploaded`;
-          window.history.replaceState({ path: newUrl }, '', newUrl);
-        }
-
         showLoader('🎼 正在推荐主题和音乐...');
         setProgress(92, '🎼 正在推荐主题和音乐...');
         await applyLLMRecommendationForAlbum({
@@ -2228,8 +2346,14 @@
           captions: photoData.map(p => p.caption)
         });
 
+        if (persistUploadedAlbum(photoData, albumTitle, chapters)) {
+          albumType = 'uploaded';
+          const newUrl = `${window.location.pathname}?album=uploaded`;
+          window.history.replaceState({ path: newUrl }, '', newUrl);
+        }
+
         setProgress(96, '📖 正在生成相册...');
-        await enterAlbum(photoData, albumTitle, { force: true });
+        await enterAlbum(photoData, albumTitle, { force: true, chapters });
         photoUpload.value = '';
       };
 

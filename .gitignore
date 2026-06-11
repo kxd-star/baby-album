@@ -9,5 +9,6 @@ __pycache__/
 
 node_modules/
 uploads/
+data/
 .DS_Store
 Thumbs.db
