@@ -4,7 +4,7 @@
  * - Others: stale-while-revalidate
  */
 
-const VERSION = 'v23-2026-06-11-curated-styles';
+const VERSION = 'v23-2026-06-11-user-isolation';
 const SHELL_CACHE = `v23-shell-${VERSION}`;
 const RUNTIME_CACHE = `v23-runtime-${VERSION}`;
 

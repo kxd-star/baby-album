@@ -1,18 +1,21 @@
 import asyncio
+import hashlib
+import hmac
 import json
 import mimetypes
 import os
+import time
 import uuid
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote, urlparse
+from urllib.parse import urlencode, urlparse
 
 import httpx
 import uvicorn
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response
 from pydantic import BaseModel
 from starlette.responses import FileResponse
 
@@ -29,6 +32,12 @@ MAX_UPLOAD_BYTES = int(os.environ.get("MAX_UPLOAD_BYTES", str(8 * 1024 * 1024)))
 MAX_UPLOAD_FILES = int(os.environ.get("MAX_UPLOAD_FILES", "30"))
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
 CAPTION_CONCURRENCY = int(os.environ.get("CAPTION_CONCURRENCY", "4"))
+SESSION_SECRET = os.environ.get("SESSION_SECRET", "dev-only-change-me").encode("utf-8")
+SESSION_COOKIE_NAME = os.environ.get("SESSION_COOKIE_NAME", "baby_album_session")
+SESSION_MAX_AGE = int(os.environ.get("SESSION_MAX_AGE", str(60 * 60 * 24 * 365)))
+SIGNED_ASSET_TTL = int(os.environ.get("SIGNED_ASSET_TTL", "600"))
+SESSION_COOKIE_SECURE = os.environ.get("SESSION_COOKIE_SECURE", "false").lower() == "true"
+SESSION_COOKIE_SAMESITE = os.environ.get("SESSION_COOKIE_SAMESITE", "lax").lower()
 
 allowed_origins = [
     origin.strip()
@@ -41,6 +50,7 @@ app.add_middleware(
     allow_origins=allowed_origins or ["*"],
     allow_methods=["*"],
     allow_headers=["*"],
+    allow_credentials="*" not in allowed_origins,
 )
 
 
@@ -74,6 +84,55 @@ class StorylineRequest(BaseModel):
     photos: list[StorylinePhoto]
 
 
+def sign_value(value: str) -> str:
+    return hmac.new(SESSION_SECRET, value.encode("utf-8"), hashlib.sha256).hexdigest()
+
+
+def create_session_token(user_id: str) -> str:
+    expires = int(time.time()) + SESSION_MAX_AGE
+    payload = f"{user_id}.{expires}"
+    return f"{payload}.{sign_value(payload)}"
+
+
+def verify_session_token(token: str | None) -> str | None:
+    if not token:
+        return None
+    try:
+        user_id, expires_text, signature = token.split(".", 2)
+        payload = f"{user_id}.{expires_text}"
+        if int(expires_text) < int(time.time()):
+            return None
+        if not hmac.compare_digest(signature, sign_value(payload)):
+            return None
+        if len(user_id) != 32 or not all(char in "0123456789abcdef" for char in user_id):
+            return None
+        return user_id
+    except (TypeError, ValueError):
+        return None
+
+
+@app.middleware("http")
+async def user_session_middleware(request: Request, call_next):
+    user_id = verify_session_token(request.cookies.get(SESSION_COOKIE_NAME))
+    is_new_session = user_id is None
+    if is_new_session:
+        user_id = uuid.uuid4().hex
+    request.state.user_id = user_id
+
+    response = await call_next(request)
+    if is_new_session:
+        response.set_cookie(
+            SESSION_COOKIE_NAME,
+            create_session_token(user_id),
+            max_age=SESSION_MAX_AGE,
+            httponly=True,
+            secure=SESSION_COOKIE_SECURE,
+            samesite=SESSION_COOKIE_SAMESITE,
+            path="/",
+        )
+    return response
+
+
 def get_public_base_url(request: Request) -> str:
     configured = os.environ.get("PUBLIC_BASE_URL", "").strip().rstrip("/")
     if configured:
@@ -89,12 +148,34 @@ def make_public_url(request: Request, path: str) -> str:
     return f"{get_public_base_url(request)}{path}"
 
 
-def get_storage_public_base_url() -> str:
-    return os.environ.get("S3_PUBLIC_BASE_URL", "").strip().rstrip("/")
-
-
 def storage_mode() -> str:
     return "s3" if os.environ.get("S3_BUCKET", "").strip() else "local"
+
+
+def storage_key(user_id: str, filename: str) -> str:
+    key_prefix = os.environ.get("S3_KEY_PREFIX", "uploads").strip().strip("/")
+    relative_key = f"{user_id}/{filename}"
+    return f"{key_prefix}/{relative_key}" if key_prefix else relative_key
+
+
+def create_asset_signature(user_id: str, filename: str, expires: int) -> str:
+    return sign_value(f"asset.{user_id}.{filename}.{expires}")
+
+
+def verify_asset_signature(user_id: str, filename: str, expires: int | None, signature: str | None) -> bool:
+    if not expires or not signature or expires < int(time.time()):
+        return False
+    expected = create_asset_signature(user_id, filename, expires)
+    return hmac.compare_digest(signature, expected)
+
+
+def make_signed_asset_url(request: Request, user_id: str, filename: str) -> str:
+    expires = int(time.time()) + SIGNED_ASSET_TTL
+    query = urlencode({
+        "expires": expires,
+        "signature": create_asset_signature(user_id, filename, expires),
+    })
+    return f"{get_public_base_url(request)}/uploads/{user_id}/{filename}?{query}"
 
 
 def normalize_same_origin_asset_url(request: Request, raw_url: str) -> str | None:
@@ -104,10 +185,6 @@ def normalize_same_origin_asset_url(request: Request, raw_url: str) -> str | Non
     raw_url = raw_url.strip()
     parsed = urlparse(raw_url)
     if parsed.scheme in ("http", "https"):
-        storage_base = get_storage_public_base_url()
-        if storage_base and (raw_url == storage_base or raw_url.startswith(storage_base + "/")):
-            return raw_url
-
         base = urlparse(get_public_base_url(request))
         if parsed.netloc != base.netloc:
             return None
@@ -118,10 +195,18 @@ def normalize_same_origin_asset_url(request: Request, raw_url: str) -> str | Non
     if not path.startswith("/"):
         path = "/" + path
 
-    if not (path.startswith("/uploads/") or path.startswith("/assets/")):
+    if path.startswith("/assets/"):
+        return make_public_url(request, path)
+    if not path.startswith("/uploads/"):
         return None
 
-    return make_public_url(request, path)
+    parts = path.strip("/").split("/")
+    if len(parts) != 3 or parts[0] != "uploads":
+        return None
+    _, user_id, filename = parts
+    if user_id != request.state.user_id:
+        return None
+    return make_signed_asset_url(request, user_id, filename)
 
 
 def sniff_image_content_type(data: bytes) -> str | None:
@@ -167,14 +252,10 @@ def get_s3_client():
 
 
 async def persist_upload(request: Request, filename: str, data: bytes, content_type: str) -> str:
+    user_id = request.state.user_id
     if storage_mode() == "s3":
         bucket = os.environ.get("S3_BUCKET", "").strip()
-        public_base = get_storage_public_base_url()
-        if not public_base:
-            raise RuntimeError("S3_PUBLIC_BASE_URL is required when S3_BUCKET is configured")
-
-        key_prefix = os.environ.get("S3_KEY_PREFIX", "uploads").strip().strip("/")
-        key = f"{key_prefix}/{filename}" if key_prefix else filename
+        key = storage_key(user_id, filename)
         client = get_s3_client()
         await asyncio.to_thread(
             client.put_object,
@@ -182,14 +263,15 @@ async def persist_upload(request: Request, filename: str, data: bytes, content_t
             Key=key,
             Body=data,
             ContentType=content_type,
-            CacheControl="public, max-age=31536000, immutable",
+            CacheControl="private, max-age=3600",
         )
-        return f"{public_base}/{quote(key, safe='/')}"
+        return make_public_url(request, f"/uploads/{user_id}/{filename}")
 
-    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-    path = UPLOAD_DIR / filename
+    user_upload_dir = UPLOAD_DIR / user_id
+    user_upload_dir.mkdir(parents=True, exist_ok=True)
+    path = user_upload_dir / filename
     await asyncio.to_thread(path.write_bytes, data)
-    return make_public_url(request, f"/uploads/{filename}")
+    return make_public_url(request, f"/uploads/{user_id}/{filename}")
 
 
 def safe_json_from_text(content: str) -> dict[str, Any]:
@@ -409,15 +491,38 @@ async def upload_photos(request: Request, files: list[UploadFile] = File(...)):
     return JSONResponse({"photos": photos})
 
 
-@app.get("/uploads/{filename}")
-async def serve_upload(filename: str):
-    if storage_mode() != "local":
+@app.get("/uploads/{user_id}/{filename}")
+async def serve_upload(
+    request: Request,
+    user_id: str,
+    filename: str,
+    expires: int | None = None,
+    signature: str | None = None,
+):
+    if user_id != request.state.user_id and not verify_asset_signature(user_id, filename, expires, signature):
         return HTMLResponse("Not Found", status_code=404)
-    if "/" in filename or "\\" in filename:
+    if "/" in filename or "\\" in filename or len(user_id) != 32:
         return HTMLResponse("Not Found", status_code=404)
 
-    file_path = (UPLOAD_DIR / filename).resolve()
-    if UPLOAD_DIR.resolve() not in file_path.parents:
+    if storage_mode() == "s3":
+        try:
+            obj = await asyncio.to_thread(
+                get_s3_client().get_object,
+                Bucket=os.environ.get("S3_BUCKET", "").strip(),
+                Key=storage_key(user_id, filename),
+            )
+            data = await asyncio.to_thread(obj["Body"].read)
+            return Response(
+                content=data,
+                media_type=obj.get("ContentType") or "application/octet-stream",
+                headers={"Cache-Control": "private, max-age=3600"},
+            )
+        except Exception:
+            return HTMLResponse("Not Found", status_code=404)
+
+    user_upload_dir = (UPLOAD_DIR / user_id).resolve()
+    file_path = (user_upload_dir / filename).resolve()
+    if user_upload_dir not in file_path.parents:
         return HTMLResponse("Not Found", status_code=404)
     if not file_path.exists() or not file_path.is_file():
         return HTMLResponse("Not Found", status_code=404)
@@ -597,6 +702,7 @@ async def health():
         "storage": storage_mode(),
         "visionConfigured": bool(get_ark_config(vision=True)),
         "textConfigured": bool(get_ark_config(vision=False)),
+        "sessionSecretConfigured": SESSION_SECRET != b"dev-only-change-me",
     })
 
 

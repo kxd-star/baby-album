@@ -1423,7 +1423,7 @@
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), timeoutMs);
         try {
-          const res = await fetch(url, { ...options, signal: controller.signal });
+          const res = await fetch(url, { credentials: 'include', ...options, signal: controller.signal });
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           return await res.json();
         } finally {
@@ -2075,6 +2075,7 @@
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
+            credentials: 'include',
             signal: controller.signal
           });
           if (!res.ok) return fallback;
