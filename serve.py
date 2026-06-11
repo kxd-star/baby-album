@@ -16,7 +16,7 @@ import uvicorn
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from starlette.responses import FileResponse
 
 try:
@@ -30,13 +30,14 @@ ROOT_DIR = Path(__file__).resolve().parent
 UPLOAD_DIR = ROOT_DIR / "uploads"
 MAX_UPLOAD_BYTES = int(os.environ.get("MAX_UPLOAD_BYTES", str(8 * 1024 * 1024)))
 MAX_UPLOAD_FILES = int(os.environ.get("MAX_UPLOAD_FILES", "30"))
+MAX_REQUEST_BODY_BYTES = int(os.environ.get("MAX_REQUEST_BODY_BYTES", str(32 * 1024 * 1024)))
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
 CAPTION_CONCURRENCY = int(os.environ.get("CAPTION_CONCURRENCY", "4"))
 SESSION_SECRET = os.environ.get("SESSION_SECRET", "dev-only-change-me").encode("utf-8")
 SESSION_COOKIE_NAME = os.environ.get("SESSION_COOKIE_NAME", "baby_album_session")
 SESSION_MAX_AGE = int(os.environ.get("SESSION_MAX_AGE", str(60 * 60 * 24 * 365)))
 SIGNED_ASSET_TTL = int(os.environ.get("SIGNED_ASSET_TTL", "600"))
-SESSION_COOKIE_SECURE = os.environ.get("SESSION_COOKIE_SECURE", "false").lower() == "true"
+SESSION_COOKIE_SECURE = os.environ.get("SESSION_COOKIE_SECURE", "true").lower() == "true"
 SESSION_COOKIE_SAMESITE = os.environ.get("SESSION_COOKIE_SAMESITE", "lax").lower()
 
 allowed_origins = [
@@ -84,6 +85,15 @@ class StorylineRequest(BaseModel):
     photos: list[StorylinePhoto]
 
 
+class RecommendRequest(BaseModel):
+    albumType: str | None = "default"
+    title: str | None = Field(default="", max_length=200)
+    captions: list[str] = Field(default_factory=list, max_length=30)
+    photos: list[dict[str, Any]] = Field(default_factory=list, max_length=30)
+    themes: list[dict[str, Any]] = Field(default_factory=list, max_length=50)
+    tracks: list[dict[str, Any]] = Field(default_factory=list, max_length=50)
+
+
 def sign_value(value: str) -> str:
     return hmac.new(SESSION_SECRET, value.encode("utf-8"), hashlib.sha256).hexdigest()
 
@@ -109,6 +119,18 @@ def verify_session_token(token: str | None) -> str | None:
         return user_id
     except (TypeError, ValueError):
         return None
+
+
+@app.middleware("http")
+async def request_body_limit_middleware(request: Request, call_next):
+    content_length = request.headers.get("content-length")
+    if content_length:
+        try:
+            if int(content_length) > MAX_REQUEST_BODY_BYTES:
+                return JSONResponse({"detail": "Request body is too large"}, status_code=413)
+        except ValueError:
+            return JSONResponse({"detail": "Invalid Content-Length header"}, status_code=400)
+    return await call_next(request)
 
 
 @app.middleware("http")
@@ -298,8 +320,6 @@ def get_ark_config(vision: bool = False) -> tuple[str, str, str] | None:
         else os.environ.get("ARK_TEXT_MODEL")
     )
     model = model or os.environ.get("ARK_MODEL")
-    if not model and not vision:
-        model = "ep-20250218123237-vszbd"
     if not model:
         return None
 
@@ -629,14 +649,13 @@ photo_ids 必须只使用输入中出现过的 id，且每张照片必须且只�
 
 
 @app.post("/api/recommend")
-async def recommend(request: Request):
-    data = await request.json()
-    album_type = data.get("albumType", "default")
-    themes = data.get("themes", [])
-    tracks = data.get("tracks", [])
-    title = data.get("title", "")
-    captions = data.get("captions", [])
-    photos = data.get("photos", [])
+async def recommend(request: Request, data: RecommendRequest):
+    album_type = data.albumType or "default"
+    themes = data.themes[:50]
+    tracks = data.tracks[:50]
+    title = (data.title or "")[:200]
+    captions = data.captions[:30]
+    photos = data.photos[:30]
 
     photo_urls = []
     for photo in photos[:3]:
@@ -697,12 +716,21 @@ async def recommend(request: Request):
 
 @app.get("/api/health")
 async def health():
+    warnings = []
+    if "*" in allowed_origins:
+        warnings.append("ALLOWED_ORIGINS=* disables credentialed cross-origin sessions")
+    if SESSION_SECRET == b"dev-only-change-me":
+        warnings.append("SESSION_SECRET is using the insecure development default")
+    if not SESSION_COOKIE_SECURE:
+        warnings.append("SESSION_COOKIE_SECURE is disabled")
+
     return JSONResponse({
         "ok": True,
         "storage": storage_mode(),
         "visionConfigured": bool(get_ark_config(vision=True)),
         "textConfigured": bool(get_ark_config(vision=False)),
         "sessionSecretConfigured": SESSION_SECRET != b"dev-only-change-me",
+        "warnings": warnings,
     })
 
 

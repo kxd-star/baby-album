@@ -30,6 +30,10 @@ SESSION_SECRET=请使用至少32位随机字符串
 SESSION_COOKIE_SECURE=true
 ```
 
+生产环境必须配置明确的 `ALLOWED_ORIGINS`。使用 `*` 时，浏览器不会为跨域 API 请求携带匿名用户会话 Cookie，用户隔离功能无法正常工作。
+
+仅在本地使用纯 HTTP 开发时，可临时设置 `SESSION_COOKIE_SECURE=false`；公网部署必须保持为 `true`。
+
 启动：
 
 ```bash
@@ -77,4 +81,6 @@ S3_REGION=auto
 
 ## 前后端分离
 
-同域部署无需修改 `config.js`。若前端部署在 GitHub Pages，将 `config.js` 中的地址改成后端公网地址，并在后端配置对应的 `ALLOWED_ORIGINS`。
+同域部署无需修改 `config.js`，FastAPI 的动态 `/config.js` 路由会提供运行时配置；仓库中的静态 `config.js` 只用于纯静态部署。
+
+若前端部署在 GitHub Pages，将静态 `config.js` 中的地址改成后端公网地址，并在后端配置对应的 `ALLOWED_ORIGINS`、`SESSION_COOKIE_SAMESITE=none` 和 `SESSION_COOKIE_SECURE=true`。
