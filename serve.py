@@ -15,7 +15,7 @@ import httpx
 import uvicorn
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response
 from pydantic import BaseModel, Field
 from starlette.responses import FileResponse
 
@@ -33,18 +33,37 @@ MAX_UPLOAD_FILES = int(os.environ.get("MAX_UPLOAD_FILES", "30"))
 MAX_REQUEST_BODY_BYTES = int(os.environ.get("MAX_REQUEST_BODY_BYTES", str(32 * 1024 * 1024)))
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
 CAPTION_CONCURRENCY = int(os.environ.get("CAPTION_CONCURRENCY", "4"))
+APP_ENV = os.environ.get("APP_ENV", "development").strip().lower()
 SESSION_SECRET = os.environ.get("SESSION_SECRET", "dev-only-change-me").encode("utf-8")
 SESSION_COOKIE_NAME = os.environ.get("SESSION_COOKIE_NAME", "baby_album_session")
 SESSION_MAX_AGE = int(os.environ.get("SESSION_MAX_AGE", str(60 * 60 * 24 * 365)))
 SIGNED_ASSET_TTL = int(os.environ.get("SIGNED_ASSET_TTL", "600"))
 SESSION_COOKIE_SECURE = os.environ.get("SESSION_COOKIE_SECURE", "true").lower() == "true"
 SESSION_COOKIE_SAMESITE = os.environ.get("SESSION_COOKIE_SAMESITE", "lax").lower()
+S3_PRESIGNED_READ = os.environ.get("S3_PRESIGNED_READ", "true").lower() == "true"
 
 allowed_origins = [
     origin.strip()
     for origin in os.environ.get("ALLOWED_ORIGINS", "*").split(",")
     if origin.strip()
 ]
+
+INSECURE_SESSION_SECRETS = {
+    b"",
+    b"change-me",
+    b"dev-only-change-me",
+    b"replace-with-a-long-random-secret",
+}
+SESSION_SECRET_CONFIGURED = (
+    SESSION_SECRET not in INSECURE_SESSION_SECRETS
+    and len(SESSION_SECRET) >= 32
+)
+if APP_ENV == "production" and not SESSION_SECRET_CONFIGURED:
+    raise RuntimeError(
+        "SESSION_SECRET must be a non-placeholder value with at least 32 characters in production"
+    )
+if APP_ENV == "production" and not SESSION_COOKIE_SECURE:
+    raise RuntimeError("SESSION_COOKIE_SECURE must be true in production")
 
 app.add_middleware(
     CORSMiddleware,
@@ -526,16 +545,31 @@ async def serve_upload(
 
     if storage_mode() == "s3":
         try:
+            bucket = os.environ.get("S3_BUCKET", "").strip()
+            key = storage_key(user_id, filename)
+            if S3_PRESIGNED_READ:
+                url = await asyncio.to_thread(
+                    get_s3_client().generate_presigned_url,
+                    "get_object",
+                    Params={"Bucket": bucket, "Key": key},
+                    ExpiresIn=SIGNED_ASSET_TTL,
+                )
+                return RedirectResponse(
+                    url,
+                    status_code=307,
+                    headers={"Cache-Control": "private, no-store"},
+                )
+
             obj = await asyncio.to_thread(
                 get_s3_client().get_object,
-                Bucket=os.environ.get("S3_BUCKET", "").strip(),
-                Key=storage_key(user_id, filename),
+                Bucket=bucket,
+                Key=key,
             )
             data = await asyncio.to_thread(obj["Body"].read)
             return Response(
                 content=data,
                 media_type=obj.get("ContentType") or "application/octet-stream",
-                headers={"Cache-Control": "private, max-age=3600"},
+                headers={"Cache-Control": "private, no-store"},
             )
         except Exception:
             return HTMLResponse("Not Found", status_code=404)
@@ -546,7 +580,7 @@ async def serve_upload(
         return HTMLResponse("Not Found", status_code=404)
     if not file_path.exists() or not file_path.is_file():
         return HTMLResponse("Not Found", status_code=404)
-    return FileResponse(file_path)
+    return FileResponse(file_path, headers={"Cache-Control": "private, no-store"})
 
 
 async def generate_caption_for_photo(request: Request, photo: CaptionPhoto, album_type: str | None) -> str:
@@ -719,17 +753,19 @@ async def health():
     warnings = []
     if "*" in allowed_origins:
         warnings.append("ALLOWED_ORIGINS=* disables credentialed cross-origin sessions")
-    if SESSION_SECRET == b"dev-only-change-me":
-        warnings.append("SESSION_SECRET is using the insecure development default")
+    if not SESSION_SECRET_CONFIGURED:
+        warnings.append("SESSION_SECRET is insecure, a placeholder, or shorter than 32 characters")
     if not SESSION_COOKIE_SECURE:
         warnings.append("SESSION_COOKIE_SECURE is disabled")
 
     return JSONResponse({
         "ok": True,
+        "environment": APP_ENV,
         "storage": storage_mode(),
+        "s3PresignedRead": storage_mode() == "s3" and S3_PRESIGNED_READ,
         "visionConfigured": bool(get_ark_config(vision=True)),
         "textConfigured": bool(get_ark_config(vision=False)),
-        "sessionSecretConfigured": SESSION_SECRET != b"dev-only-change-me",
+        "sessionSecretConfigured": SESSION_SECRET_CONFIGURED,
         "warnings": warnings,
     })
 

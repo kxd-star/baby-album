@@ -15,6 +15,7 @@
 ```bash
 git clone https://github.com/kxd-star/baby-album.git
 cd baby-album
+git switch codex/cloud-ready-ai-album
 cp .env.example .env
 ```
 
@@ -28,6 +29,12 @@ PUBLIC_BASE_URL=https://album.example.com
 ALLOWED_ORIGINS=https://album.example.com
 SESSION_SECRET=请使用至少32位随机字符串
 SESSION_COOKIE_SECURE=true
+```
+
+`docker compose` 默认以生产模式启动。生产模式下，若 `SESSION_SECRET` 未配置、仍为示例占位值或少于 32 位，服务会拒绝启动。可使用以下命令生成密钥：
+
+```bash
+openssl rand -hex 32
 ```
 
 生产环境必须配置明确的 `ALLOWED_ORIGINS`。使用 `*` 时，浏览器不会为跨域 API 请求携带匿名用户会话 Cookie，用户隔离功能无法正常工作。
@@ -69,15 +76,29 @@ S3_ENDPOINT_URL=https://your-s3-endpoint
 S3_ACCESS_KEY_ID=your-access-key
 S3_SECRET_ACCESS_KEY=your-secret-key
 S3_REGION=auto
+S3_PRESIGNED_READ=true
 ```
 
-对象存储保持私有。浏览器只能访问当前匿名用户自己的图片，视觉模型通过短期签名地址读取图片。
+对象存储保持私有。浏览器只能访问当前匿名用户自己的图片，视觉模型通过短期签名地址读取图片。用户通过服务端鉴权后会重定向到短期 S3 预签名地址，图片下载流量不会经过 FastAPI 中转。若对象存储不支持预签名 URL，可设置 `S3_PRESIGNED_READ=false` 恢复服务端中转。
 
 ## 用户数据隔离
 
 服务端会为每个浏览器签发带签名的匿名会话 Cookie。上传文件按匿名用户 ID 分目录保存，其他用户即使拿到图片 URL 也无法访问。AI 识图使用短期签名 URL。
 
 这能隔离不同设备和不同浏览器会话；若需要同一设备切换账号、跨设备同步或账号找回，还需要继续接入登录系统并将匿名用户 ID 绑定到正式用户账号。
+
+当前相册故事线与设置保存在浏览器 `localStorage` 中。清理浏览器数据、更换浏览器或更换设备后无法恢复历史相册；正式账号和服务端相册数据库属于后续扩展，不是 `main` 分支现有能力。
+
+## 上线检查
+
+启动后检查容器状态和健康接口：
+
+```bash
+docker compose ps
+curl https://album.example.com/api/health
+```
+
+健康接口中的 `sessionSecretConfigured`、`visionConfigured` 和 `textConfigured` 应为 `true`，`warnings` 应为空。启用 S3 时，`storage` 应为 `s3`，`s3PresignedRead` 应为 `true`。
 
 ## 前后端分离
 

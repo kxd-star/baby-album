@@ -4,7 +4,7 @@
  * - Others: stale-while-revalidate
  */
 
-const VERSION = 'v23-2026-06-11-user-isolation';
+const VERSION = 'v23-2026-06-11-cloud-ready';
 const SHELL_CACHE = `v23-shell-${VERSION}`;
 const RUNTIME_CACHE = `v23-runtime-${VERSION}`;
 
@@ -98,11 +98,16 @@ self.addEventListener('fetch', (event) => {
   // Only handle same-origin
   if (url.origin !== self.location.origin) return;
 
-  // Never cache API calls or non-GET requests.
-  if (req.method !== 'GET' || url.pathname.startsWith('/api/')) return;
+  // Never cache private uploads, runtime configuration, API calls, or non-GET requests.
+  if (
+    req.method !== 'GET'
+    || url.pathname.startsWith('/api/')
+    || url.pathname.startsWith('/uploads/')
+    || url.pathname.endsWith('/config.js')
+  ) return;
 
   // Navigation (HTML): network-first
-  if (req.mode === 'navigate' || req.destination === 'document' || url.pathname.endsWith('/config.js')) {
+  if (req.mode === 'navigate' || req.destination === 'document') {
     event.respondWith(networkFirst(req));
     return;
   }
