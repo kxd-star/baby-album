@@ -1,0 +1,2687 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8" />
+  <title>✨ AI 动态相册生成器 · 创作中心</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <script src="./config.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&family=Ma+Shan+Zheng&family=Noto+Serif+SC:wght@700&family=ZCOOL+KuaiLe&display=swap" rel="stylesheet">
+  <link rel="preload" href="assets/bgm.mp3" as="audio" type="audio/mpeg">
+  <style>
+    :root {
+      --bg: #fdf6e3;
+      --cover-bg: #d4a373;
+      --page-bg: #fffcf2;
+      --text: #5d4037;
+      --shadow: rgba(100, 70, 40, 0.18);
+      --flip-dur: 0.6s;
+      --accent: #e6a23c;
+      --font-display: 'Inter', sans-serif;
+      --font-body: 'PingFang SC', sans-serif;
+      --border-radius: 16px;
+    }
+
+    /* ── Theme Definitions ── */
+    body.theme-classic { }
+    
+    body.theme-cyber {
+      --bg: #0d0221;
+      --cover-bg: #ff00ff;
+      --page-bg: #1a0b2e;
+      --text: #00ffff;
+      --shadow: rgba(0, 255, 255, 0.3);
+      --accent: #ff00ff;
+    }
+    
+    body.theme-minimal {
+      --bg: #ffffff;
+      --cover-bg: #000000;
+      --page-bg: #f8f8f8;
+      --text: #111111;
+      --shadow: rgba(0, 0, 0, 0.1);
+      --font-display: 'Inter', sans-serif;
+      --border-radius: 0px;
+    }
+    
+    body.theme-ink {
+      --bg: #f4f1de;
+      --cover-bg: #2b2d42;
+      --page-bg: #fff;
+      --text: #222;
+      --shadow: rgba(0, 0, 0, 0.15);
+      --font-display: 'Ma Shan Zheng', cursive;
+    }
+    
+    body.theme-harajuku {
+      --bg: #f1c40f;
+      --cover-bg: #9b59b6;
+      --page-bg: #e74c3c;
+      --text: #fff;
+      --shadow: rgba(0, 0, 0, 0.2);
+      --font-display: 'ZCOOL KuaiLe', cursive;
+    }
+    
+    body.theme-forest {
+      --bg: #2d6a4f;
+      --cover-bg: #1b4332;
+      --page-bg: #d8f3dc;
+      --text: #081c15;
+      --shadow: rgba(8, 28, 21, 0.2);
+    }
+    
+    body.theme-luxury {
+      --bg: #1a1a1a;
+      --cover-bg: #d4af37;
+      --page-bg: #262626;
+      --text: #f5f5f5;
+      --shadow: rgba(212, 175, 55, 0.2);
+      --font-display: 'Noto Serif SC', serif;
+    }
+
+    body.theme-ocean {
+      --bg: #0077b6;
+      --cover-bg: #00b4d8;
+      --page-bg: #90e0ef;
+      --text: #03045e;
+      --shadow: rgba(3, 4, 94, 0.2);
+    }
+
+        body.theme-romantic-wedding {
+      --bg: linear-gradient(135deg, #fffcf5 0%, #ffe0e9 100%);
+      --cover-bg: #ff758c;
+      --page-bg: #ffffff;
+      --text: #2f3542;
+      --shadow: rgba(255, 117, 140, 0.2);
+      --accent: #ff4757;
+      --font-display: 'Noto Serif SC', serif;
+      --border-radius: 8px;
+    }
+    body.theme-baby-blue {
+      --bg: linear-gradient(135deg, #e0f7fa 0%, #80deea 100%);
+      --cover-bg: #00acc1;
+      --page-bg: #ffffff;
+      --text: #006064;
+      --shadow: rgba(0, 172, 193, 0.2);
+      --accent: #00838f;
+      --font-display: 'ZCOOL KuaiLe', cursive;
+      --border-radius: 20px;
+    }
+    body.theme-dark-gold {
+      --bg: linear-gradient(to bottom, #111, #222);
+      --cover-bg: #d4af37;
+      --page-bg: #1a1a1a;
+      --text: #f1f1f1;
+      --shadow: rgba(212, 175, 55, 0.3);
+      --accent: #ffd700;
+      --font-display: 'Noto Serif SC', serif;
+      --border-radius: 0px;
+    }
+    body.theme-mint {
+      --bg: #e0f2f1;
+      --cover-bg: #4db6ac;
+      --page-bg: #ffffff;
+      --text: #004d40;
+      --shadow: rgba(77, 182, 172, 0.2);
+      --accent: #00897b;
+      --font-display: 'Inter', sans-serif;
+      --border-radius: 12px;
+    }
+    body.theme-peach {
+      --bg: #fbe9e7;
+      --cover-bg: #ffab91;
+      --page-bg: #ffffff;
+      --text: #bf360c;
+      --shadow: rgba(255, 171, 145, 0.2);
+      --accent: #ff8a65;
+      --font-display: 'Inter', sans-serif;
+      --border-radius: 12px;
+    }
+    body.theme-lavender {
+      --bg: #f3e5f5;
+      --cover-bg: #ba68c8;
+      --page-bg: #ffffff;
+      --text: #4a148c;
+      --shadow: rgba(186, 104, 200, 0.2);
+      --accent: #9c27b0;
+      --font-display: 'Inter', sans-serif;
+      --border-radius: 12px;
+    }
+    body.theme-sunset {
+      --bg: #fb8500;
+      --cover-bg: #ffb703;
+      --page-bg: #ffecd2;
+      --text: #023047;
+      --shadow: rgba(2, 48, 71, 0.2);
+    }
+
+    /* ── Dynamic Advanced Themes ── */
+    body.theme-animated-gradient {
+      --bg: linear-gradient(-45deg, #ee7752, #e73c7e, #23a6d5, #23d5ab);
+      --cover-bg: #ffffff;
+      --page-bg: #ffffff;
+      --text: #333333;
+      --shadow: rgba(0,0,0,0.1);
+      background-size: 400% 400%;
+      animation: gradientBG 15s ease infinite;
+    }
+    @keyframes gradientBG {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+
+    body.theme-bokeh {
+      --bg: #1a1a2e;
+      --cover-bg: #e94560;
+      --page-bg: #16213e;
+      --text: #ffffff;
+      --shadow: rgba(233, 69, 96, 0.3);
+      background: radial-gradient(ellipse at bottom, #1b2735 0%, #090a0f 100%);
+    }
+    body.theme-bokeh::after {
+      content: "";
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: radial-gradient(circle, rgba(233, 69, 96, 0.1) 10%, transparent 20%);
+      background-size: 150px 150px;
+      animation: bokehMove 20s linear infinite;
+      z-index: -1;
+    }
+    @keyframes bokehMove {
+      from { transform: translateY(0); }
+      to { transform: translateY(-150px); }
+    }
+
+    body.theme-starry {
+      --bg: #0b3d91;
+      --cover-bg: #ffd700;
+      --page-bg: #f0f0f0;
+      --text: #0b3d91;
+      --shadow: rgba(11, 61, 145, 0.3);
+      background: radial-gradient(circle at center, #1b2735 0%, #090a0f 100%);
+    }
+
+    /* ── Curated Album Themes ── */
+    body.theme-editorial {
+      --bg: #e9edf0;
+      --cover-bg: #171717;
+      --page-bg: #ffffff;
+      --text: #171717;
+      --shadow: rgba(23, 23, 23, 0.18);
+      --accent: #e63946;
+      --font-display: 'Noto Serif SC', serif;
+      --border-radius: 2px;
+    }
+    body.theme-editorial .photo-container img {
+      border: 2px solid #171717;
+      box-shadow: 10px 10px 0 #e63946;
+    }
+
+    body.theme-botanical {
+      --bg: #dfe8e3;
+      --cover-bg: #315c45;
+      --page-bg: #f8fbf9;
+      --text: #173528;
+      --shadow: rgba(49, 92, 69, 0.2);
+      --accent: #e76f51;
+      --font-display: 'Noto Serif SC', serif;
+      --border-radius: 10px;
+    }
+    body.theme-botanical .photo-container {
+      background: #d9eee2;
+      border: 1px solid rgba(49, 92, 69, 0.18);
+    }
+
+    body.theme-polaroid {
+      --bg: #b8d8e8;
+      --cover-bg: #0f5661;
+      --page-bg: #fffdf7;
+      --text: #163b43;
+      --shadow: rgba(15, 86, 97, 0.22);
+      --accent: #f4c542;
+      --font-display: 'ZCOOL KuaiLe', cursive;
+      --border-radius: 8px;
+    }
+    body.theme-polaroid .photo-container img {
+      border: 8px solid white;
+      border-bottom-width: 24px;
+      transform: rotate(-1deg);
+      box-shadow: 0 10px 18px rgba(15, 86, 97, 0.22);
+    }
+
+    body.theme-cinema {
+      --bg: #101010;
+      --cover-bg: #8f1d24;
+      --page-bg: #181818;
+      --text: #f3ead8;
+      --shadow: rgba(0, 0, 0, 0.48);
+      --accent: #e0b35a;
+      --font-display: 'Noto Serif SC', serif;
+      --border-radius: 0px;
+    }
+    body.theme-cinema .page-side { border: 1px solid #8f1d24; }
+    body.theme-cinema .photo-container img { border-color: #e0b35a; }
+
+    body.theme-celebration {
+      --bg: #f4e8ec;
+      --cover-bg: #9b1c31;
+      --page-bg: #fffafa;
+      --text: #52101c;
+      --shadow: rgba(155, 28, 49, 0.2);
+      --accent: #d9a441;
+      --font-display: 'Noto Serif SC', serif;
+      --border-radius: 6px;
+    }
+    body.theme-celebration .page-side { border: 2px solid rgba(217, 164, 65, 0.55); }
+
+    body.theme-gallery {
+      --bg: #dce3ea;
+      --cover-bg: #2449a4;
+      --page-bg: #ffffff;
+      --text: #19243a;
+      --shadow: rgba(36, 73, 164, 0.18);
+      --accent: #ef8354;
+      --font-display: 'Inter', sans-serif;
+      --border-radius: 4px;
+    }
+    body.theme-gallery .photo-container {
+      background: #edf2f7;
+      border-left: 6px solid #ef8354;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-body);
+      color: var(--text);
+      overflow: hidden;
+      touch-action: none;
+      transition: background-color 0.8s ease, color 0.8s ease;
+    }
+
+    /* Background Textures */
+    body.theme-classic::before {
+      content: ''; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background-image: radial-gradient(circle, rgba(212,163,115,0.08) 1.5px, transparent 1.5px);
+      background-size: 30px 30px; z-index: -1;
+    }
+    body.theme-cyber::before {
+      content: ''; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: repeating-linear-gradient(0deg, rgba(0, 255, 255, 0.03) 0px, rgba(0, 255, 255, 0.03) 1px, transparent 1px, transparent 2px);
+      background-size: 100% 3px; z-index: -1;
+    }
+    body.theme-ink::before {
+      content: ''; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background-image: url('https://www.transparenttextures.com/patterns/handmade-paper.png');
+      opacity: 0.5; z-index: -1;
+    }
+
+    /* ── Loading Overlay ── */
+    #loadingOverlay {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: var(--bg);
+      z-index: 10000;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      transition: opacity 0.8s ease, visibility 0.8s;
+    }
+    .loader-box { text-align: center; }
+    .loader-title { font-size: 1.3rem; margin-bottom: 25px; font-weight: bold; color: var(--cover-bg); letter-spacing: 1px; }
+    .progress-container { width: 280px; height: 8px; background: rgba(0,0,0,0.05); border-radius: 4px; overflow: hidden; margin-bottom: 12px; box-shadow: inset 0 1px 3px rgba(0,0,0,0.1); }
+    #progressBar { width: 0%; height: 100%; background: linear-gradient(90deg, var(--cover-bg), var(--accent)); transition: width 0.4s cubic-bezier(0.1, 0.7, 0.1, 1); }
+    .progress-text { font-size: 0.9rem; color: #8a7b6a; font-weight: 500; }
+
+    /* ── App Shell ── */
+    #appShell {
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 1s ease;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      width: 100%; height: 100%;
+    }
+    body.ready #appShell { opacity: 1; visibility: visible; }
+    body.ready #loadingOverlay { opacity: 0; visibility: hidden; pointer-events: none; }
+
+    /* 允许在 ready 之后“再次打开”加载层（用于相册图片强力预加载） */
+    body.ready.show-loader #loadingOverlay {
+      opacity: 1;
+      visibility: visible;
+      pointer-events: auto;
+    }
+
+    /* UI Controls */
+    .top-bar {
+      position: fixed;
+      top: 20px; right: 20px;
+      display: flex; gap: 14px;
+      z-index: 9999;
+    }
+    .icon-btn {
+      width: 48px; height: 48px;
+      border-radius: 50%; border: none;
+      background: var(--cover-bg);
+      color: white; font-size: 22px;
+      cursor: pointer; box-shadow: 0 6px 16px var(--shadow);
+      display: flex; align-items: center; justify-content: center;
+      transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      -webkit-tap-highlight-color: transparent;
+    }
+    .icon-btn:hover { transform: scale(1.1); filter: brightness(1.1); }
+    .icon-btn.active { background: var(--accent); }
+    .music-btn.playing { animation: spin 5s linear infinite; }
+    @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+    /* Floating Editor Panel (SaaS Style) */
+    #editorPanel {
+      position: fixed;
+      top: 80px; right: 20px;
+      width: 320px;
+      max-height: 85vh;
+      overflow-y: auto;
+      background: rgba(255, 255, 255, 0.9);
+      backdrop-filter: blur(20px);
+      border-radius: 24px;
+      box-shadow: 0 20px 50px rgba(0,0,0,0.15);
+      padding: 24px;
+      z-index: 9998;
+      transform: translateX(400px);
+      opacity: 0;
+      transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+      border: 1px solid rgba(255,255,255,0.3);
+    }
+    #editorPanel.open { transform: translateX(0); opacity: 1; }
+    
+    .editor-section { margin-bottom: 24px; }
+    .editor-label { font-size: 0.9rem; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; color: #888; margin-bottom: 12px; display: block; }
+    
+    .theme-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+    .theme-item {
+      aspect-ratio: 1; border-radius: 12px; cursor: pointer; border: 3px solid transparent;
+      transition: all 0.2s; position: relative; overflow: hidden;
+    }
+    .theme-item.active { border-color: var(--accent); transform: scale(1.1); }
+    .theme-item.recommended::after {
+      content: '荐';
+      position: absolute;
+      top: 4px;
+      right: 6px;
+      font-size: 0.65rem;
+      background: rgba(0,0,0,0.7);
+      color: #fff;
+      padding: 2px 4px;
+      border-radius: 6px;
+    }
+    .theme-preview { width: 100%; height: 100%; }
+
+    .music-list { display: flex; flex-direction: column; gap: 8px; }
+    .music-item {
+      padding: 10px 14px; border-radius: 12px; background: rgba(0,0,0,0.04);
+      display: flex; align-items: center; justify-content: space-between; cursor: pointer;
+      transition: all 0.2s; font-size: 0.9rem;
+    }
+    .music-item:hover { background: rgba(0,0,0,0.08); }
+    .music-item.active { background: var(--cover-bg); color: white; }
+    .music-item.recommended { outline: 1px dashed var(--accent); }
+
+    .save-btn {
+      width: 100%; padding: 16px; border-radius: 16px; border: none;
+      background: linear-gradient(135deg, #2ecc71, #27ae60);
+      color: white; font-weight: 900; font-size: 1.1rem; cursor: pointer;
+      box-shadow: 0 8px 20px rgba(46, 204, 113, 0.3);
+      transition: all 0.3s; margin-top: 10px;
+    }
+    .save-btn:hover { transform: translateY(-3px); box-shadow: 0 12px 25px rgba(46, 204, 113, 0.4); }
+
+    /* History Panel */
+    #historyPanel {
+      position: fixed; top: 80px; right: 20px; width: 360px; max-height: 80vh; overflow-y: auto;
+      background: rgba(255, 255, 255, 0.96); backdrop-filter: blur(12px); border-radius: 20px;
+      box-shadow: 0 20px 50px rgba(0,0,0,0.2); padding: 24px; z-index: 9999;
+      transform: translateY(-30px) scale(0.95); opacity: 0; visibility: hidden;
+      transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+    #historyPanel.open { transform: translateY(0) scale(1); opacity: 1; visibility: visible; }
+    .history-item {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 10px; border-bottom: 1px solid rgba(0,0,0,0.05); transition: background 0.3s; border-radius: 8px;
+    }
+    .history-item:hover { background: rgba(0,0,0,0.03); }
+    .history-item-link { display: flex; align-items: center; flex: 1; text-decoration: none; color: #333; }
+    .history-info { display: flex; flex-direction: column; }
+    .history-title { font-weight: bold; font-size: 0.95rem; }
+    .history-desc { font-size: 0.75rem; color: #888; }
+
+    /* Generator Entry UI */
+    .upload-container {
+      flex: 1; display: flex; align-items: center; justify-content: center; width: 100%; z-index: 10;
+    }
+    .upload-box {
+      width: min(90%, 500px); background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(20px);
+      border: 3px dashed var(--cover-bg); border-radius: 40px; padding: 60px 40px; text-align: center;
+      box-shadow: 0 30px 60px var(--shadow); transition: all 0.4s;
+    }
+    .upload-box:hover { transform: translateY(-10px); border-color: var(--accent); }
+    .upload-icon { font-size: 80px; margin-bottom: 25px; animation: bounce 2s infinite; }
+    @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-20px); } }
+    .upload-title { font-size: 2.2rem; color: var(--cover-bg); margin-bottom: 15px; font-weight: 900; font-family: var(--font-display); }
+    .upload-hint { font-size: 1.1rem; color: #666; margin-bottom: 40px; }
+    .upload-btn {
+      padding: 20px 60px; background: linear-gradient(135deg, var(--cover-bg), var(--accent));
+      color: white; border: none; border-radius: 100px; font-size: 1.3rem; font-weight: bold;
+      cursor: pointer; box-shadow: 0 10px 20px var(--shadow); transition: all 0.3s;
+    }
+    .upload-btn:hover { transform: scale(1.05); filter: brightness(1.1); }
+
+    /* Scene wrapper (The Book) */
+    .scene-wrapper {
+      width: 100vw; height: 75vh; display: flex; align-items: center; justify-content: center; position: relative;
+    }
+    .scene, .magazine {
+      perspective: 2500px;
+      width: min(44vw, 420px);
+      height: min(62vw, 580px);
+      --scene-shift: 0px;
+      --scene-scale: 1;
+      transform: translateX(var(--scene-shift)) scale(var(--scene-scale)) translateZ(0);
+      transform-origin: center;
+      transition: transform 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+      will-change: transform;
+    }
+    .scene.is-open, .magazine.is-open { --scene-shift: var(--scene-shift-open, min(22vw, 210px)); }
+
+    @media (max-width: 600px) {
+      .scene, .magazine { width: 44vw; height: 68vw; perspective: 2000px; }
+      .scene.is-open, .magazine.is-open { --scene-shift: var(--scene-shift-open, 22vw); }
+      .cover-title { font-size: 1.8rem; }
+      .upload-title { font-size: 1.6rem; }
+      .upload-box { padding: 40px 20px; }
+      .top-bar { top: 10px; right: 10px; gap: 8px; }
+      .icon-btn { width: 40px; height: 40px; font-size: 18px; }
+      #editorPanel { width: calc(100% - 20px); right: 10px; top: 60px; padding: 16px; }
+      .photo-container img { border-width: 4px; }
+      .caption { font-size: 0.8rem; min-height: 40px; padding: 0 10px; }
+      .content-box { padding: 15px 10px; }
+    }
+
+    /* ── Mobile Landscape Support ── */
+    @media (max-width: 950px) and (orientation: landscape) {
+      /* iOS 横屏 + 3D 翻页：通过缩放确保整体不被裁剪 */
+      .scene-wrapper {
+        height: 100vh;
+        padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+      }
+      .scene, .magazine {
+        width: min(38vh, 92vw);
+        height: min(54vh, 92vh);
+        perspective: 2000px;
+        /* 关闭/打开时的总横向占用约为 (width + shift) ≈ 57vh；据此按视口宽度自适应缩放 */
+        --scene-scale: min(1, calc((100vw - 24px) / 57vh));
+      }
+      .scene.is-open, .magazine.is-open { --scene-shift: var(--scene-shift-open, 19vh); }
+      .cover-title { font-size: 1.8rem; }
+      .upload-title { font-size: 1.4rem; }
+      .upload-box { padding: 20px; width: 80%; }
+      .upload-icon { font-size: 40px; margin-bottom: 10px; }
+      .upload-hint { margin-bottom: 15px; font-size: 0.9rem; }
+      .top-bar { top: 10px; right: 10px; gap: 6px; }
+      .icon-btn { width: 36px; height: 36px; font-size: 16px; }
+      #editorPanel { width: 280px; top: 50px; padding: 15px; }
+      .footer { margin-top: 5px; gap: 10px; }
+      .nav-btn { padding: 8px 20px; font-size: 0.9rem; }
+      .caption { font-size: 0.75rem; min-height: 35px; }
+      .content-box { padding: 10px; }
+    }
+    .book { width: 100%; height: 100%; position: relative; transform-style: preserve-3d; -webkit-transform-style: preserve-3d; will-change: transform;
+    }
+    .page.is-turning { z-index: 101 !important; }
+    .page {
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%; transform-origin: left center;
+      transform-style: preserve-3d; transition: transform var(--flip-dur) cubic-bezier(0.4, 0, 0.2, 1);
+      will-change: transform;
+    }
+    .page.flipped { transform: rotateY(-180deg); }
+    .page-side {
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%; backface-visibility: hidden;
+      -webkit-backface-visibility: hidden;
+      background: var(--page-bg); border-radius: 0 var(--border-radius) var(--border-radius) 0;
+      box-shadow: 6px 6px 25px var(--shadow); border: 1px solid rgba(0,0,0,0.05); overflow: hidden;
+      /* transform: translateZ(0) REMOVED because it breaks backface-visibility on many browsers */
+    }
+    .page-front {
+      transform: rotateY(0deg);
+      -webkit-transform: rotateY(0deg);
+      z-index: 2;
+    }
+    .page-back { transform: rotateY(180deg); border-radius: var(--border-radius) 0 0 var(--border-radius); }
+
+    /* Content Box */
+    .content-box {
+      position: relative; width: 100%; height: 100%; display: flex; flex-direction: column;
+      align-items: center; justify-content: space-between; padding: 30px 18px; z-index: 2;
+    }
+    .centered-box { justify-content: center !important; text-align: center; }
+    .photo-container {
+      width: 100%; flex: 1; display: flex; align-items: center; justify-content: center;
+      position: relative; background: rgba(255,255,255,0.3); border-radius: 12px; margin-bottom: 18px; overflow: hidden;
+    }
+    .photo-container img { width: 92%; height: auto; max-height: 92%; object-fit: contain; border: 8px solid white; box-shadow: 0 8px 25px var(--shadow); }
+    .photo-container img.album-photo { opacity: 1; }
+    .caption { font-size: 1rem; text-align: center; font-weight: 700; color: var(--text); min-height: 50px; display: flex; align-items: center; }
+    .chapter-side {
+      background: var(--cover-bg);
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+    }
+    .chapter-content {
+      width: 100%;
+      padding: 36px 28px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 18px;
+    }
+    .chapter-number {
+      font-size: 0.78rem;
+      font-weight: 900;
+      opacity: 0.72;
+      letter-spacing: 1px;
+    }
+    .chapter-page-title {
+      font-family: var(--font-display);
+      font-size: 2.5rem;
+      line-height: 1.15;
+      overflow-wrap: anywhere;
+    }
+    .chapter-page-description {
+      max-width: 280px;
+      font-size: 0.95rem;
+      line-height: 1.7;
+      opacity: 0.9;
+    }
+    .chapter-photo-count {
+      border-top: 1px solid rgba(255,255,255,0.35);
+      padding-top: 14px;
+      font-size: 0.78rem;
+      opacity: 0.72;
+    }
+
+    .cover-side { background: var(--cover-bg); color: white; border: none; display: flex; align-items: center; justify-content: center; }
+    .cover-title { font-size: 3rem; font-weight: 900; text-align: center; font-family: var(--font-display); line-height: 1.1; }
+
+    .footer { margin-top: 20px; display: flex; align-items: center; gap: 20px; z-index: 9997; }
+    .nav-btn { padding: 12px 28px; background: var(--cover-bg); color: white; border: none; border-radius: 30px; cursor: pointer; font-weight: bold; }
+    .nav-btn:disabled { opacity: 0.3; }
+
+    /* Particles Canvas */
+    #particles { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; }
+
+    /* Modal for Save */
+    #saveModal {
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6);
+      z-index: 20000; display: none; align-items: center; justify-content: center;
+    }
+    .modal-box {
+      width: 400px; background: white; padding: 40px; border-radius: 30px; text-align: center;
+      box-shadow: 0 30px 60px rgba(0,0,0,0.5); transform: scale(0.8); transition: all 0.3s;
+    }
+    #saveModal.active { display: flex; }
+    #saveModal.active .modal-box { transform: scale(1); }
+
+    #storylineModal {
+      position: fixed;
+      inset: 0;
+      z-index: 15000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      background: rgba(18, 14, 10, 0.58);
+      backdrop-filter: blur(10px);
+    }
+    .storyline-panel {
+      width: min(920px, calc(100vw - 32px));
+      max-height: min(820px, calc(100vh - 32px));
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      padding: 24px;
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.96);
+      box-shadow: 0 24px 70px rgba(0,0,0,0.28);
+      color: #2f261f;
+    }
+    .storyline-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 18px;
+    }
+    .storyline-kicker {
+      font-size: 0.78rem;
+      font-weight: 900;
+      color: var(--cover-bg);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 6px;
+    }
+    .storyline-heading {
+      font-size: 1.5rem;
+      line-height: 1.2;
+      font-weight: 900;
+      font-family: var(--font-display);
+    }
+    .storyline-note {
+      margin-top: 6px;
+      color: #6f6258;
+      font-size: 0.95rem;
+      line-height: 1.5;
+    }
+    .storyline-list {
+      display: grid;
+      gap: 12px;
+      overflow-y: auto;
+      padding-right: 4px;
+    }
+    .storyline-card {
+      border: 1px solid rgba(0,0,0,0.08);
+      border-radius: 8px;
+      background: #fff;
+      padding: 14px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.06);
+    }
+    .storyline-title-input {
+      width: 100%;
+      border: 1px solid rgba(0,0,0,0.12);
+      border-radius: 8px;
+      padding: 10px 12px;
+      font: 900 1rem var(--font-body);
+      color: var(--cover-bg);
+      background: #fffaf5;
+      outline: none;
+    }
+    .storyline-title-input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(212, 163, 115, 0.18);
+    }
+    .storyline-desc {
+      margin: 10px 2px 12px;
+      color: #6b5e54;
+      font-size: 0.92rem;
+      line-height: 1.45;
+    }
+    .storyline-thumbs {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(74px, 1fr));
+      gap: 8px;
+    }
+    .storyline-thumb {
+      aspect-ratio: 1;
+      border-radius: 8px;
+      overflow: hidden;
+      background: #f2eee8;
+      border: 1px solid rgba(0,0,0,0.06);
+    }
+    .storyline-thumb img {
+      width: 100%;
+      height: 100%;
+      display: block;
+      object-fit: cover;
+    }
+    .storyline-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 12px;
+      border-top: 1px solid rgba(0,0,0,0.08);
+      padding-top: 16px;
+    }
+    .storyline-btn {
+      min-width: 120px;
+      border: none;
+      border-radius: 999px;
+      padding: 12px 18px;
+      font-weight: 900;
+      cursor: pointer;
+      transition: transform 0.2s, filter 0.2s;
+    }
+    .storyline-btn:hover { transform: translateY(-2px); filter: brightness(1.04); }
+    .storyline-btn:disabled { opacity: 0.55; cursor: wait; transform: none; }
+    .storyline-btn.secondary { background: #efe8df; color: #55483e; }
+    .storyline-btn.primary {
+      color: white;
+      background: linear-gradient(135deg, var(--cover-bg), var(--accent));
+      box-shadow: 0 10px 20px var(--shadow);
+    }
+
+    @media (max-width: 600px) {
+      #storylineModal { padding: 12px; }
+      .storyline-panel { padding: 18px; max-height: calc(100vh - 24px); }
+      .storyline-header { display: block; }
+      .storyline-heading { font-size: 1.22rem; }
+      .storyline-actions { display: grid; grid-template-columns: 1fr; }
+      .storyline-btn { width: 100%; }
+    }
+
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body class="theme-classic">
+
+  <canvas id="particles"></canvas>
+
+  <div id="loadingOverlay">
+    <div class="loader-box">
+      <div class="loader-title" id="progressTitle">✨ 正在进入 AI 创作空间...</div>
+      <div class="progress-container"><div id="progressBar"></div></div>
+      <div class="progress-text" id="progressText">0%</div>
+    </div>
+  </div>
+
+  <div id="storylineModal" class="hidden">
+    <div class="storyline-panel">
+      <div class="storyline-header">
+        <div>
+          <div class="storyline-kicker">AI Storyline</div>
+          <div class="storyline-heading">AI 为你规划了故事线</div>
+          <div class="storyline-note">可以直接改章节标题，确认后再推荐主题和音乐。</div>
+        </div>
+      </div>
+      <div id="storylineList" class="storyline-list"></div>
+      <div class="storyline-actions">
+        <button type="button" id="regenerateStorylineBtn" class="storyline-btn secondary">重新生成</button>
+        <button type="button" id="confirmStorylineBtn" class="storyline-btn primary">确认使用</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="appShell">
+    <div class="top-bar">
+      <button class="icon-btn" id="homeBtn" title="返回上传">🏠</button>
+      <button class="icon-btn" id="editorBtn" title="风格编辑器">🎨</button>
+      <button class="icon-btn" id="historyBtn" title="时光档案馆">🗂️</button>
+      <button class="icon-btn music-btn" id="musicBtn" title="音乐开关">🎵</button>
+      <button class="icon-btn" id="autoBtn" title="自动播放">▶️</button>
+    </div>
+
+    <!-- History Panel -->
+    <div id="historyPanel">
+      <div class="editor-section">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+          <span style="font-weight:900;font-size:1.2rem;">🗂️ 时光档案馆</span>
+          <span id="closeHistory" style="cursor:pointer;">✖️</span>
+        </div>
+        <p style="font-size:0.8rem;color:#777;margin-bottom:20px;">记录您的每一次创作。您可以随时回溯或分享给亲友。</p>
+        <div class="history-list">
+          <div class="history-item">
+            <a href="?album=baby" class="history-item-link">
+              <div class="history-info">
+                <span class="history-title">👶 宝宝满月相册</span>
+                <span class="history-desc">温馨时光 · 20张精选</span>
+              </div>
+            </a>
+          </div>
+          <div class="history-item">
+            <a href="?album=wedding" class="history-item-link">
+              <div class="history-info">
+                <span class="history-title">💍 浪漫婚纱相册</span>
+                <span class="history-desc">Beautiful in White · 示例</span>
+              </div>
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SaaS Editor Panel -->
+    <div id="editorPanel">
+      <div class="editor-section">
+        <span class="editor-label">风格视觉引擎</span>
+        <div class="theme-grid" id="themeGrid">
+          <!-- JS Render -->
+        </div>
+      </div>
+      <div class="editor-section">
+        <span class="editor-label">治愈系原声带</span>
+        <div class="music-list" id="musicList">
+          <!-- JS Render -->
+        </div>
+      </div>
+      <div class="editor-section">
+        <button class="save-btn" id="saveBtn">💾 保存当前设置</button>
+      </div>
+    </div>
+
+    <!-- Save Success Modal -->
+    <div id="saveModal">
+      <div class="modal-box">
+        <div id="saveLoader">
+          <div class="upload-icon">📦</div>
+          <h3>正在打包专属配置...</h3>
+        </div>
+        <div id="saveSuccess" class="hidden">
+          <div class="upload-icon">✅</div>
+          <h2 style="color:#2ecc71;margin-bottom:10px;">保存成功！</h2>
+          <p>您的主题和音乐偏好已保存，下次打开同类相册会自动应用。</p>
+          <button class="save-btn" style="margin-top:20px;" onclick="document.getElementById('saveModal').classList.remove('active')">太棒了</button>
+        </div>
+      </div>
+    </div>
+
+    <audio id="bgm" loop preload="auto"></audio>
+
+    <div id="uploadContainer" class="upload-container">
+      <div class="upload-box">
+        <div class="upload-icon">📸</div>
+        <h2 class="upload-title">创作您的专属动态相册</h2>
+        <p class="upload-hint">上传照片，AI 将为您智能生成精美背景、温馨配乐与动人配文。</p>
+        <input type="file" id="photoUpload" multiple accept="image/*" class="hidden">
+        <button class="upload-btn" id="startBtn">立即开启创作</button>
+      </div>
+    </div>
+
+    <div class="scene-wrapper hidden" id="albumMain">
+      <div class="scene magazine" id="scene">
+        <div class="book" id="book">
+          <!-- Dynamic Generated Content -->
+        </div>
+      </div>
+    </div>
+
+    <div class="footer hidden" id="albumFooter">
+      <button class="nav-btn" id="prevBtn">上一页</button>
+      <div id="pageInfo" style="font-weight:900;">1 / 3</div>
+      <button class="nav-btn" id="nextBtn">下一页</button>
+    </div>
+  </div>
+
+  <script>
+    (function() {
+      'use strict';
+      
+      const themes = [
+        { id: 'editorial', name: '📰 高级杂志', color: 'linear-gradient(135deg, #fff, #e63946)', mood: '高级、克制、现代', scenes: ['城市写真', '旅行', '人物特写'], palette: '黑白红', visual: '杂志排版、硬朗边框' },
+        { id: 'botanical', name: '🌿 植物画册', color: 'linear-gradient(135deg, #315c45, #e76f51)', mood: '自然、安静、治愈', scenes: ['户外', '亲子', '日常生活'], palette: '森林绿、珊瑚红', visual: '自然画册、柔和留白' },
+        { id: 'polaroid', name: '📷 宝丽来日记', color: 'linear-gradient(135deg, #b8d8e8, #f4c542)', mood: '轻松、活泼、怀旧', scenes: ['朋友聚会', '旅行', '儿童'], palette: '天蓝、明黄、白色', visual: '拍立得相框、手帐感' },
+        { id: 'cinema', name: '🎞️ 电影叙事', color: 'linear-gradient(135deg, #101010, #8f1d24)', mood: '深沉、故事感、戏剧性', scenes: ['夜景', '纪实', '情侣'], palette: '黑、酒红、金色', visual: '电影海报、宽银幕质感' },
+        { id: 'celebration', name: '🥂 庆典鎏金', color: 'linear-gradient(135deg, #9b1c31, #d9a441)', mood: '喜庆、正式、珍贵', scenes: ['婚礼', '周年', '家庭庆典'], palette: '宝石红、鎏金、白色', visual: '庆典请柬、金色细节' },
+        { id: 'gallery', name: '🖼️ 当代画廊', color: 'linear-gradient(135deg, #2449a4, #ef8354)', mood: '清爽、艺术、理性', scenes: ['建筑', '艺术展', '产品与静物'], palette: '钴蓝、橙色、冷灰', visual: '画廊标签、现代网格' },
+        { id: 'romantic-wedding', name: '🌸 绝美婚礼', color: 'linear-gradient(135deg, #fffcf5, #ffebf0)', mood: '浪漫、柔美、仪式感', scenes: ['婚礼', '情侣', '纪念日'], palette: '白色、粉色', visual: '婚礼高定、柔和光影' },
+        { id: 'baby-blue', name: '🍼 纯真宝贝', color: 'linear-gradient(135deg, #e0f7fa, #80deea)', mood: '纯真、温柔、可爱', scenes: ['宝宝', '儿童', '亲子'], palette: '浅蓝、白色', visual: '柔软圆角、童趣' },
+        { id: 'dark-gold', name: '👑 黑金岁月', color: 'linear-gradient(135deg, #111, #d4af37)', mood: '庄重、奢华、经典', scenes: ['宴会', '正式肖像', '周年'], palette: '黑色、金色', visual: '黑金礼册' },
+        { id: 'mint', name: '🍃 清新薄荷', color: '#4db6ac', mood: '清新、干净、轻盈', scenes: ['日常', '户外', '美食'], palette: '薄荷绿、白色', visual: '清爽简洁' },
+        { id: 'peach', name: '🍑 蜜桃乌龙', color: '#ffab91', mood: '温暖、甜蜜、松弛', scenes: ['日常', '情侣', '美食'], palette: '蜜桃粉、白色', visual: '温暖柔和' },
+        { id: 'lavender', name: '💜 浪漫薰衣草', color: '#ba68c8', mood: '梦幻、浪漫、柔和', scenes: ['情侣', '花海', '写真'], palette: '薰衣草紫、白色', visual: '梦幻柔光' },
+        { id: 'classic', name: '经典亚麻', color: '#fdf6e3', mood: '温馨、耐看、怀旧', scenes: ['家庭', '日常', '成长记录'], palette: '亚麻色、棕色', visual: '经典纸质相册' },
+        { id: 'cyber', name: '赛博霓虹', color: '#0d0221', mood: '酷炫、未来、强烈', scenes: ['夜景', '演出', '城市'], palette: '黑色、青色、洋红', visual: '霓虹科技感' },
+        { id: 'minimal', name: '极简北欧', color: '#ffffff', mood: '克制、干净、宁静', scenes: ['建筑', '静物', '人物写真'], palette: '黑白灰', visual: '极简留白' },
+        { id: 'ink', name: '国风水墨', color: '#f4f1de', mood: '东方、含蓄、雅致', scenes: ['古风', '山水', '传统仪式'], palette: '墨色、宣纸白', visual: '水墨与书法' },
+        { id: 'harajuku', name: '原宿撞色', color: '#f1c40f', mood: '大胆、青春、欢乐', scenes: ['朋友', '派对', '街拍'], palette: '高饱和撞色', visual: '潮流贴纸感' },
+        { id: 'forest', name: '森系呼吸', color: '#2d6a4f', mood: '自然、沉静、深呼吸', scenes: ['森林', '露营', '户外'], palette: '深绿、浅绿', visual: '森林沉浸感' },
+        { id: 'luxury', name: '黑金至尊', color: '#1a1a1a', mood: '奢华、正式、强势', scenes: ['商务', '宴会', '正式肖像'], palette: '黑色、金色', visual: '高级礼册' },
+        { id: 'ocean', name: '深海之蓝', color: '#0077b6', mood: '清凉、自由、开阔', scenes: ['海边', '旅行', '夏日'], palette: '海蓝、浅蓝', visual: '海洋通透感' },
+        { id: 'sunset', name: '落日余晖', color: '#fb8500', mood: '热烈、温暖、怀念', scenes: ['夕阳', '旅行', '户外'], palette: '橙色、金黄', visual: '落日暖光' },
+        { id: 'animated-gradient', name: '动感渐变', color: 'linear-gradient(45deg, #ee7752, #e73c7e)', mood: '活力、年轻、流动', scenes: ['派对', '潮流', '旅行'], palette: '多彩渐变', visual: '动态色彩' },
+        { id: 'bokeh', name: '梦幻光影', color: '#e94560', mood: '浪漫、朦胧、夜色', scenes: ['夜景', '情侣', '节日'], palette: '深色、玫红', visual: '散景光斑' },
+        { id: 'starry', name: '星空流火', color: '#0b3d91', mood: '梦幻、辽阔、安静', scenes: ['星空', '夜景', '旅行'], palette: '深蓝、金色', visual: '星空沉浸感' }
+      ];
+
+      // AI 根据情绪、能量和适用场景，从真实不同的内置音频中选择。
+      const tracks = [
+        { src: 'assets/bgm.mp3', name: '💍 白纱回忆', mood: '浪漫、庄重、温柔', energy: '低', scenes: ['婚礼', '情侣', '周年纪念'] },
+        { src: 'assets/bgm_2.mp3', name: '🌙 月光来信', mood: '安静、怀念、细腻', energy: '低', scenes: ['家庭回忆', '夜景', '人物特写'] },
+        { src: 'assets/bgm_3.mp3', name: '🎻 旧梦回响', mood: '温暖、舒缓、治愈', energy: '低', scenes: ['日常', '成长记录', '家庭'] },
+        { src: 'assets/music/lullaby.mp3', name: '🍼 摇篮微光', mood: '柔软、安心、纯真', energy: '极低', scenes: ['宝宝', '儿童', '亲子'] },
+        { src: 'assets/music/cinematic.mp3', name: '🎞️ 银幕序章', mood: '宏大、叙事、深情', energy: '中', scenes: ['旅行故事', '纪实', '庆典'] },
+        { src: 'assets/music/travel_upbeat.mp3', name: '☀️ 向晴天出发', mood: '明快、自由、快乐', energy: '高', scenes: ['旅行', '朋友聚会', '户外'] }
+      ];
+
+      // 多场景主题/BGM 依赖注入配置中心（可被上层通过 window.V23_ALBUM_PRESETS 覆写）
+      const DEFAULT_ALBUM_PRESETS = {
+        default: {
+          id: 'default',
+          sceneLabel: '通用相册',
+          defaultTheme: 'classic',
+          defaultTrack: tracks[0].src
+        },
+        baby: {
+          id: 'baby',
+          sceneLabel: '宝宝相册',
+          defaultTheme: 'baby-blue',
+          defaultTrack: 'assets/music/lullaby.mp3'
+        },
+        wedding: {
+          id: 'wedding',
+          sceneLabel: '婚纱相册',
+          defaultTheme: 'romantic-wedding',
+          defaultTrack: 'assets/bgm.mp3'
+        }
+      };
+
+      const albumPresets = (typeof window !== 'undefined' && window.V23_ALBUM_PRESETS)
+        ? { ...DEFAULT_ALBUM_PRESETS, ...window.V23_ALBUM_PRESETS }
+        : DEFAULT_ALBUM_PRESETS;
+
+      let currentTheme = 'classic';
+      let currentTrack = tracks[0].src;
+      let currentPage = 0;
+      let isPlaying = false;
+      let pages = [];
+      let albumType = 'default';
+
+      // 是否已存在本地偏好配置（用于控制 LLM 是否覆盖默认值）
+      let hasPersistedSettings = false;
+      // LLM 推荐的主题 / 曲目，仅做标记与 UI 高亮，不破坏用户手动选择
+      let recommendedThemeId = null;
+      let recommendedTrackSrc = null;
+      let uploadedObjectUrls = [];
+      const UPLOADED_ALBUM_KEY = 'v23_uploaded_album';
+      const API_BASE_URL = String(window.ALBUM_API_BASE_URL || '').replace(/\/+$/, '');
+
+      function apiUrl(path) {
+        const normalizedPath = String(path || '').startsWith('/') ? String(path) : `/${path}`;
+        return API_BASE_URL ? `${API_BASE_URL}${normalizedPath}` : normalizedPath;
+      }
+
+      function escapeHtml(value) {
+        return String(value ?? '')
+          .replaceAll('&', '&amp;')
+          .replaceAll('<', '&lt;')
+          .replaceAll('>', '&gt;')
+          .replaceAll('"', '&quot;')
+          .replaceAll("'", '&#039;');
+      }
+
+      function formatAlbumTitle(value) {
+        return String(value || '我们的回忆录')
+          .replace(/\n/g, '<br>')
+          .split(/<br\s*\/?>/gi)
+          .map(escapeHtml)
+          .join('<br>');
+      }
+
+      function releaseUploadedObjectUrls() {
+        uploadedObjectUrls.forEach(url => URL.revokeObjectURL(url));
+        uploadedObjectUrls = [];
+      }
+
+      const captionPools = {
+        baby: [
+          "初见你的第一眼，世界都亮了。",
+          "小小的手心，牵动着全家人的心。",
+          "看你可爱的模样，心都被融化了。",
+          "第一次翻身，全家人都为你鼓掌。",
+          "满月啦！愿你平安喜乐，岁岁年年。",
+          "你是坠入凡间的小天使，带着满身星光。",
+          "愿你眼里有星辰，心中有良善。",
+          "小脚丫，大梦想，一步一个脚印去探索世界。",
+          "你是上天赐予我们最珍贵的礼物。",
+          "看你一天天长大，是这个世界上最幸福的事。",
+          "小小的脸庞，大大的好奇，这个世界真奇妙。",
+          "你是我们生命中的阳光，照亮了所有的角落。",
+          "愿你的童年充满欢笑，无忧无虑。",
+          "每一声啼哭都是成长的节奏，每一张笑脸都是爱的馈赠。",
+          "宝贝，愿你慢慢长大，被这世界温柔相待。",
+          "你的每一个小动作，都在诉说着生命的奇迹。",
+          "你是星辰大海，是我们永远的牵挂。",
+          "陪伴你成长的每一刻，都值得被永远铭记。",
+          "你是未来的希望，是绽放在我们心尖的花朵。",
+          "愿你此生尽兴，赤诚善良。"
+        ],
+        wedding: [
+          "执子之手，与子偕老。",
+          "往后余生，全都是你。",
+          "星光坠入眼里，而你落进我心里。",
+          "人间烟火，山河远阔，无一是你，无一不是你。",
+          "遇见你的那一天，风都很甜。",
+          "从今以后，晨昏是你，四季也是你。",
+          "你是平淡生活里的英雄梦想。",
+          "众生皆苦，唯你是草莓味。",
+          "我的世界因为有你，才变得完整。",
+          "爱是心动，更是余生漫长的相守。",
+          "你是这世间所有的温柔与浪漫。",
+          "陪你走过漫漫长路，直到白发苍苍。",
+          "愿得一人心，白首不相离。",
+          "你是我的满目星河，也是我的余生所向。",
+          "爱情最好的样子，就是你在闹，我在笑。",
+          "这一刻的誓言，我们将用一生去守护。",
+          "无论贫穷富有，无论健康疾病，我永远爱你。",
+          "感谢命运让我们相遇，感谢你出现在我的生命里。",
+          "你是我的唯一，也是我的全部。",
+          "愿我们的爱情，如初见般美好，如岁月般绵长。"
+        ],
+        default: [
+          "精选瞬间 ✨", "温暖回忆 ☀️", "这一刻，永恒 🕊️", "时光不老，我们不散。",
+          "记录美好的点点滴滴。", "留住最灿烂的笑容。", "岁月静好，现世安稳。",
+          "每一个瞬间都值得被珍藏。", "生活中的小确幸。", "愿美好如期而至。"
+        ]
+      };
+
+      function shuffleArray(array) {
+        const arr = [...array];
+        for (let i = arr.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [arr[i], arr[j]] = [arr[j], arr[i]];
+        }
+        return arr;
+      }
+
+      function getCaptions(type, count) {
+        const pool = captionPools[type] || captionPools.default;
+        let result = [];
+        while (result.length < count) {
+          result = result.concat(shuffleArray(pool));
+        }
+        return result.slice(0, count);
+      }
+
+      function sanitizeChaptersForStorage(chapters, allowedIds) {
+        const allowed = new Set(allowedIds.map(String));
+        return Array.isArray(chapters)
+          ? chapters.map(chapter => ({
+            title: String(chapter.title || '章节').slice(0, 24),
+            description: String(chapter.description || '').slice(0, 120),
+            photo_ids: Array.isArray(chapter.photo_ids)
+              ? chapter.photo_ids.map(String).filter(id => allowed.has(id))
+              : []
+          })).filter(chapter => chapter.photo_ids.length > 0)
+          : [];
+      }
+
+      function persistUploadedAlbum(photos, title, chapters = []) {
+        const persistedPhotos = photos
+          .filter(photo => photo && photo.persisted && photo.src)
+          .map(photo => ({
+            id: photo.id || '',
+            src: photo.src,
+            caption: photo.caption || ''
+          }));
+
+        if (persistedPhotos.length === 0) return false;
+
+        const persistedIds = persistedPhotos.map(photo => photo.id).filter(Boolean);
+        localStorage.setItem(UPLOADED_ALBUM_KEY, JSON.stringify({
+          title,
+          photos: persistedPhotos,
+          chapters: sanitizeChaptersForStorage(chapters, persistedIds),
+          theme: currentTheme,
+          track: currentTrack,
+          createdAt: Date.now()
+        }));
+        return true;
+      }
+
+      function loadUploadedAlbum() {
+        try {
+          const raw = localStorage.getItem(UPLOADED_ALBUM_KEY);
+          if (!raw) return null;
+          const data = JSON.parse(raw);
+          if (!Array.isArray(data.photos) || data.photos.length === 0) return null;
+          const photos = data.photos.map(photo => ({
+            id: photo.id || '',
+            src: photo.src,
+            caption: photo.caption || '值得珍藏的美好瞬间',
+            persisted: true
+          }));
+          const chapters = sanitizeChaptersForStorage(data.chapters, photos.map(photo => photo.id).filter(Boolean));
+          const photoById = new Map(photos.map(photo => [photo.id, photo]));
+          const orderedPhotos = [];
+
+          chapters.forEach(chapter => {
+            chapter.photo_ids.forEach(photoId => {
+              const photo = photoById.get(photoId);
+              if (photo && !orderedPhotos.includes(photo)) orderedPhotos.push(photo);
+            });
+          });
+          photos.forEach(photo => {
+            if (!orderedPhotos.includes(photo)) orderedPhotos.push(photo);
+          });
+
+          return {
+            title: data.title || '我们的<br>回忆录',
+            photos: orderedPhotos,
+            chapters,
+            theme: String(data.theme || ''),
+            track: String(data.track || '')
+          };
+        } catch (e) {
+          console.warn('[Album] failed to load uploaded album', e);
+          return null;
+        }
+      }
+
+      // --- Photo load policy ---
+      // 移动端（尤其 iOS + 3D 翻页）对懒加载非常敏感：统一使用最简单的 <img src> 直接加载。
+      let albumGeneratedOnce = false;
+
+      function buildPhotoMarkup(photo) {
+        if (!photo || !photo.src) return '';
+        const src = escapeHtml(photo.src);
+        const webp = photo.srcWebp ? escapeHtml(photo.srcWebp) : '';
+
+        if (webp) {
+          return `<div class="photo-container"><picture><source type="image/webp" srcset="${webp}"><img class="album-photo" src="${src}" alt="" loading="eager" decoding="async"></picture></div>`;
+        }
+
+        return `<div class="photo-container"><img class="album-photo" src="${src}" alt="" loading="eager" decoding="async"></div>`;
+      }
+
+      // localStorage management
+      function loadSettings() {
+        const saved = localStorage.getItem(`v23_album_settings_${albumType}`);
+        if (saved) {
+          try {
+            const data = JSON.parse(saved);
+            hasPersistedSettings = true;
+            if (data.theme) {
+              currentTheme = data.theme;
+              themes.forEach(theme => document.body.classList.remove(`theme-${theme.id}`));
+              document.body.classList.add(`theme-${currentTheme}`);
+            }
+            if (data.track) {
+              const exists = tracks.some(t => t.src === data.track);
+              currentTrack = exists ? data.track : tracks[0].src;
+              bgm.src = currentTrack;
+            } else if (typeof data.trackIndex === 'number' && tracks[data.trackIndex]) {
+              // 兼容以索引形式保存的 BGM 偏好
+              currentTrack = tracks[data.trackIndex].src;
+              bgm.src = currentTrack;
+            }
+          } catch (e) {
+            console.error('Error loading settings', e);
+          }
+        } else {
+          // 默认体验按场景走 DI 配置，避免硬编码串台
+          hasPersistedSettings = false;
+          const preset = albumPresets[albumType] || albumPresets.default;
+          currentTheme = preset.defaultTheme;
+          currentTrack = preset.defaultTrack;
+          themes.forEach(theme => document.body.classList.remove(`theme-${theme.id}`));
+          document.body.classList.add(`theme-${currentTheme}`);
+          bgm.src = currentTrack;
+        }
+      }
+
+      function saveSettings() {
+        const trackIndex = tracks.findIndex(t => t.src === currentTrack);
+        const data = {
+          theme: currentTheme,
+          track: currentTrack,
+          // 同步写入索引，便于未来列表调整时仍能回显
+          trackIndex: trackIndex >= 0 ? trackIndex : undefined
+        };
+        localStorage.setItem(`v23_album_settings_${albumType}`, JSON.stringify(data));
+      }
+
+      // DOM Elements
+      const bgm = document.getElementById('bgm');
+      const progressBar = document.getElementById('progressBar');
+      const progressText = document.getElementById('progressText');
+      const progressTitle = document.getElementById('progressTitle');
+      const appShell = document.getElementById('appShell');
+      const loadingOverlay = document.getElementById('loadingOverlay');
+      const startBtn = document.getElementById('startBtn');
+      const photoUpload = document.getElementById('photoUpload');
+      const uploadContainer = document.getElementById('uploadContainer');
+      const albumMain = document.getElementById('albumMain');
+      const albumFooter = document.getElementById('albumFooter');
+      const editorBtn = document.getElementById('editorBtn');
+      const editorPanel = document.getElementById('editorPanel');
+      const themeGrid = document.getElementById('themeGrid');
+      const musicList = document.getElementById('musicList');
+      const saveBtn = document.getElementById('saveBtn');
+      const saveModal = document.getElementById('saveModal');
+      const historyBtn = document.getElementById('historyBtn');
+      const historyPanel = document.getElementById('historyPanel');
+      const musicBtn = document.getElementById('musicBtn');
+      const book = document.getElementById('book');
+      const storylineModal = document.getElementById('storylineModal');
+      const storylineList = document.getElementById('storylineList');
+      const regenerateStorylineBtn = document.getElementById('regenerateStorylineBtn');
+      const confirmStorylineBtn = document.getElementById('confirmStorylineBtn');
+
+      // --- BGM playback helpers (robust switching + better diagnostics) ---
+      function safeResetAudio() {
+        try { bgm.pause(); } catch (_) {}
+        try { bgm.currentTime = 0; } catch (_) {}
+      }
+
+      async function safePlayAudio(reason) {
+        try {
+          const p = bgm.play();
+          if (p && typeof p.then === 'function') await p;
+          return true;
+        } catch (err) {
+          console.warn('[BGM] play() rejected:', reason, err);
+          return false;
+        }
+      }
+
+      async function switchTrack(nextSrc, { autoplay } = { autoplay: false }) {
+        if (!nextSrc) return;
+
+        // 如果 src 没变，不重复触发 load/play
+        if (bgm.src && bgm.src.endsWith(nextSrc)) {
+          if (autoplay) await safePlayAudio('same-src');
+          return;
+        }
+
+        safeResetAudio();
+        bgm.preload = autoplay ? 'auto' : 'metadata';
+        bgm.src = nextSrc;
+        bgm.load();
+
+        if (!autoplay) return;
+
+        // 立即尝试播放；若资源还未 ready，则在 canplay 再试一次
+        const ok = await safePlayAudio('switch');
+        if (ok) return;
+
+        const onCanPlay = async () => {
+          bgm.removeEventListener('canplay', onCanPlay);
+          await safePlayAudio('canplay-retry');
+        };
+        bgm.addEventListener('canplay', onCanPlay);
+      }
+
+      bgm.addEventListener('error', () => {
+        // 常见：404/403/资源不支持。这里给出显式日志，方便线上排障。
+        const err = bgm.error;
+        console.error('[BGM] load error:', {
+          src: bgm.currentSrc || bgm.src,
+          code: err ? err.code : null
+        });
+      });
+
+      // 统一用音频事件驱动 UI 状态，避免“切歌需要缓冲”时出现错判
+      bgm.addEventListener('play', () => {
+        musicBtn.classList.add('playing');
+        isPlaying = true;
+      });
+      bgm.addEventListener('pause', () => {
+        musicBtn.classList.remove('playing');
+        isPlaying = false;
+      });
+
+      // Initialize Themes
+      function renderThemes() {
+        themeGrid.innerHTML = '';
+        themes.forEach(t => {
+          const div = document.createElement('div');
+          const isActive = currentTheme === t.id;
+          const isRecommended = !!recommendedThemeId && recommendedThemeId === t.id;
+          div.className = `theme-item ${isActive ? 'active' : ''} ${isRecommended ? 'recommended' : ''}`.trim();
+          div.style.background = t.color;
+          div.title = isRecommended ? `${t.name} · 推荐` : t.name;
+          div.onclick = () => {
+            // Remove existing theme classes then add the new one, avoiding overwriting 'ready'
+            themes.forEach(theme => document.body.classList.remove(`theme-${theme.id}`));
+            document.body.classList.add(`theme-${t.id}`);
+            currentTheme = t.id;
+            saveSettings();
+            renderThemes();
+          };
+          themeGrid.appendChild(div);
+        });
+      }
+
+      // Initialize Music
+      function renderMusic() {
+        musicList.innerHTML = '';
+        tracks.forEach(t => {
+          const div = document.createElement('div');
+          const isActive = currentTrack === t.src;
+          const isRecommended = !!recommendedTrackSrc && recommendedTrackSrc === t.src;
+          div.className = `music-item ${isActive ? 'active' : ''} ${isRecommended ? 'recommended' : ''}`.trim();
+          div.title = `${t.mood || ''}${t.energy ? ` · 能量${t.energy}` : ''}`;
+          let tail = '';
+          if (isActive) tail = '✅';
+          else if (isRecommended) tail = '⭐ 推荐';
+          div.innerHTML = `<span>${t.name}</span>${tail}`;
+          div.onclick = () => {
+            currentTrack = t.src;
+            switchTrack(t.src, { autoplay: isPlaying });
+            saveSettings();
+            renderMusic();
+          };
+          musicList.appendChild(div);
+        });
+      }
+
+      // ---- Loading Progress (real tasks, weak-network friendly) ----
+      function setProgress(pct, title) {
+        const p = Math.max(0, Math.min(100, Math.floor(pct)));
+        progressBar.style.width = p + '%';
+        progressText.innerText = p + '%';
+        if (progressTitle && title) progressTitle.innerText = title;
+      }
+
+      async function preloadUrl(url) {
+        if (!url) return;
+        const res = await fetch(url, { cache: 'force-cache' });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        await res.arrayBuffer();
+      }
+
+      async function registerServiceWorker() {
+        if (!('serviceWorker' in navigator)) return false;
+        try {
+          await navigator.serviceWorker.register('./sw.js', { scope: './' });
+          return true;
+        } catch (e) {
+          console.warn('[SW] register failed', e);
+          return false;
+        }
+      }
+
+      function withTimeout(promise, ms) {
+        return Promise.race([
+          promise,
+          new Promise(resolve => setTimeout(() => resolve('timeout'), ms))
+        ]);
+      }
+
+      // ---- 强力图片预加载（解决移动端重组 DOM 后空白/未渲染） ----
+      function supportsWebp() {
+        try {
+          const c = document.createElement('canvas');
+          if (!c.getContext) return false;
+          return c.toDataURL('image/webp').indexOf('data:image/webp') === 0;
+        } catch (_) {
+          return false;
+        }
+      }
+
+      const CAN_USE_WEBP = supportsWebp();
+
+      function showLoader(title) {
+        // ready 后默认会隐藏 loadingOverlay，这里通过 show-loader 重新显示
+        document.body.classList.add('show-loader');
+        setProgress(0, title || '📸 正在加载照片...');
+      }
+
+      function hideLoader() {
+        document.body.classList.remove('show-loader');
+      }
+
+      async function fetchJsonWithTimeout(url, options = {}, timeoutMs = 15000) {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeoutMs);
+        try {
+          const res = await fetch(url, { credentials: 'include', ...options, signal: controller.signal });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          return await res.json();
+        } finally {
+          clearTimeout(timer);
+        }
+      }
+
+      async function uploadFilesToServer(files) {
+        const formData = new FormData();
+        files.forEach(file => formData.append('files', file));
+        const data = await fetchJsonWithTimeout(apiUrl('/api/upload'), {
+          method: 'POST',
+          body: formData
+        }, 30000);
+
+        if (!data || !Array.isArray(data.photos) || data.photos.length === 0) {
+          throw new Error('Empty upload response');
+        }
+
+        return data.photos.map((photo, i) => ({
+          id: photo.id || String(i),
+          src: photo.url,
+          caption: '',
+          persisted: true
+        }));
+      }
+
+      async function requestAICaptions(photos, { albumType, title, fallbackCaptions }) {
+        const payload = {
+          albumType,
+          title,
+          photos: photos.map(photo => ({ id: photo.id, url: photo.src }))
+        };
+        const data = await fetchJsonWithTimeout(apiUrl('/api/captions'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        }, 45000);
+
+        const captions = Array.isArray(data.captions) ? data.captions : [];
+        const byId = new Map(captions.map(item => [item.id, item.caption]));
+        return photos.map((photo, i) => ({
+          ...photo,
+          caption: byId.get(photo.id) || captions[i]?.caption || fallbackCaptions[i] || '值得珍藏的美好瞬间'
+        }));
+      }
+
+      function ensurePhotoIds(photos) {
+        const stamp = Date.now().toString(36);
+        return photos.map((photo, i) => ({
+          ...photo,
+          id: photo.id || `p_${stamp}_${i}`
+        }));
+      }
+
+      function storylineTemplates(type) {
+        if (type === 'baby') {
+          return [
+            { title: '初见', description: '宝宝初来人世的美好瞬间' },
+            { title: '成长', description: '记录一点点变化和新本领' },
+            { title: '日常', description: '日常陪伴里的温馨片段' },
+            { title: '珍藏', description: '值得反复回看的幸福时刻' }
+          ];
+        }
+        if (type === 'wedding') {
+          return [
+            { title: '相遇', description: '故事开始时的心动瞬间' },
+            { title: '心动', description: '彼此靠近的浪漫片段' },
+            { title: '相守', description: '携手同行的温柔承诺' },
+            { title: '定格', description: '把幸福留在这一刻' }
+          ];
+        }
+        return [
+          { title: '开篇', description: '回忆从这些画面慢慢展开' },
+          { title: '日常', description: '平凡生活里的温暖片段' },
+          { title: '高光', description: '最值得停留的闪亮瞬间' },
+          { title: '珍藏', description: '留给以后反复回看的记忆' }
+        ];
+      }
+
+      function buildFallbackStoryline(photos, type) {
+        const ids = photos.map(photo => String(photo.id || '')).filter(Boolean);
+        if (ids.length === 0) return [];
+
+        let chapterCount = 1;
+        if (ids.length > 1 && ids.length <= 4) chapterCount = 2;
+        if (ids.length > 4 && ids.length <= 9) chapterCount = 3;
+        if (ids.length > 9) chapterCount = 4;
+
+        const templates = storylineTemplates(type);
+        const chunkSize = Math.ceil(ids.length / chapterCount);
+        const chapters = [];
+        for (let i = 0; i < chapterCount; i++) {
+          const photoIds = ids.slice(i * chunkSize, (i + 1) * chunkSize);
+          if (photoIds.length === 0) continue;
+          const template = templates[i] || templates[templates.length - 1];
+          chapters.push({
+            title: template.title,
+            description: template.description,
+            photo_ids: photoIds
+          });
+        }
+        return chapters;
+      }
+
+      function normalizeStoryline(chapters, photos, type) {
+        const ids = photos.map(photo => String(photo.id || '')).filter(Boolean);
+        const known = new Set(ids);
+        if (!Array.isArray(chapters) || ids.length === 0) {
+          return buildFallbackStoryline(photos, type);
+        }
+
+        const templates = storylineTemplates(type);
+        const used = new Set();
+        let normalized = chapters.map((chapter, i) => {
+          const template = templates[Math.min(i, templates.length - 1)];
+          const photoIds = [];
+          if (Array.isArray(chapter.photo_ids)) {
+            chapter.photo_ids.map(String).forEach(id => {
+              if (known.has(id) && !used.has(id)) {
+                photoIds.push(id);
+                used.add(id);
+              }
+            });
+          }
+          return {
+            title: String(chapter.title || template.title).slice(0, 24),
+            description: String(chapter.description || template.description).slice(0, 120),
+            photo_ids: photoIds
+          };
+        }).filter(chapter => chapter.photo_ids.length > 0);
+
+        const missing = ids.filter(id => !used.has(id));
+        if (missing.length > 0) {
+          if (normalized.length > 0) {
+            normalized[normalized.length - 1].photo_ids.push(...missing);
+          } else {
+            return buildFallbackStoryline(photos, type);
+          }
+        }
+
+        if (normalized.length > 4) {
+          const merged = normalized.slice(0, 4);
+          normalized.slice(4).forEach(chapter => {
+            merged[3].photo_ids.push(...chapter.photo_ids);
+          });
+          normalized = merged;
+        }
+
+        if (ids.length > 1 && normalized.length < 2) {
+          return buildFallbackStoryline(photos, type);
+        }
+        return normalized;
+      }
+
+      async function requestStoryline(photos, { albumType, title }) {
+        const payload = {
+          albumType,
+          title,
+          photos: photos.map(photo => ({
+            id: photo.id,
+            url: photo.src,
+            caption: photo.caption || ''
+          }))
+        };
+        const data = await fetchJsonWithTimeout(apiUrl('/api/storyline'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        }, 22000);
+        return normalizeStoryline(data.chapters, photos, albumType);
+      }
+
+      function orderPhotosByChapters(photos, chapters) {
+        const byId = new Map(photos.map(photo => [String(photo.id || ''), photo]));
+        const used = new Set();
+        const ordered = [];
+
+        chapters.forEach(chapter => {
+          if (!Array.isArray(chapter.photo_ids)) return;
+          chapter.photo_ids.forEach(rawId => {
+            const id = String(rawId);
+            const photo = byId.get(id);
+            if (photo && !used.has(id)) {
+              ordered.push(photo);
+              used.add(id);
+            }
+          });
+        });
+
+        photos.forEach(photo => {
+          const id = String(photo.id || '');
+          if (!used.has(id)) ordered.push(photo);
+        });
+        return ordered;
+      }
+
+      function renderStorylinePreview(photos, chapters) {
+        if (!storylineList) return;
+        const byId = new Map(photos.map(photo => [String(photo.id || ''), photo]));
+        storylineList.innerHTML = '';
+
+        chapters.forEach((chapter, index) => {
+          const card = document.createElement('section');
+          card.className = 'storyline-card';
+          card.dataset.photoIds = JSON.stringify(chapter.photo_ids || []);
+
+          const input = document.createElement('input');
+          input.className = 'storyline-title-input';
+          input.value = chapter.title || `第${index + 1}章`;
+          input.maxLength = 24;
+          input.setAttribute('aria-label', `第${index + 1}章标题`);
+          card.appendChild(input);
+
+          const description = document.createElement('div');
+          description.className = 'storyline-desc';
+          description.textContent = chapter.description || '这些照片组成了一段温暖回忆。';
+          card.appendChild(description);
+
+          const thumbs = document.createElement('div');
+          thumbs.className = 'storyline-thumbs';
+          (chapter.photo_ids || []).forEach(photoId => {
+            const photo = byId.get(String(photoId));
+            if (!photo) return;
+            const wrap = document.createElement('div');
+            wrap.className = 'storyline-thumb';
+            const img = document.createElement('img');
+            img.src = pickBestPhotoUrl(photo);
+            img.alt = photo.caption || '';
+            wrap.appendChild(img);
+            thumbs.appendChild(wrap);
+          });
+          card.appendChild(thumbs);
+          storylineList.appendChild(card);
+        });
+      }
+
+      function collectStorylineFromPreview(chapters) {
+        const cards = Array.from(storylineList.querySelectorAll('.storyline-card'));
+        return cards.map((card, i) => {
+          const input = card.querySelector('.storyline-title-input');
+          const description = card.querySelector('.storyline-desc');
+          let photoIds = [];
+          try {
+            photoIds = JSON.parse(card.dataset.photoIds || '[]');
+          } catch (_) {
+            photoIds = chapters[i]?.photo_ids || [];
+          }
+          return {
+            title: (input?.value || chapters[i]?.title || `第${i + 1}章`).trim() || `第${i + 1}章`,
+            description: description?.textContent || chapters[i]?.description || '',
+            photo_ids: photoIds
+          };
+        });
+      }
+
+      function showStorylinePreview(photos, initialChapters, { albumType, title }) {
+        const fallback = normalizeStoryline(initialChapters, photos, albumType);
+        if (!storylineModal || !storylineList || !regenerateStorylineBtn || !confirmStorylineBtn) {
+          return Promise.resolve(fallback);
+        }
+
+        return new Promise(resolve => {
+          let chapters = fallback;
+          const render = () => renderStorylinePreview(photos, chapters);
+          const cleanup = () => {
+            regenerateStorylineBtn.onclick = null;
+            confirmStorylineBtn.onclick = null;
+            storylineModal.classList.add('hidden');
+          };
+
+          regenerateStorylineBtn.disabled = false;
+          regenerateStorylineBtn.textContent = '重新生成';
+          confirmStorylineBtn.disabled = false;
+          render();
+          storylineModal.classList.remove('hidden');
+
+          regenerateStorylineBtn.onclick = async () => {
+            regenerateStorylineBtn.disabled = true;
+            confirmStorylineBtn.disabled = true;
+            regenerateStorylineBtn.textContent = '生成中...';
+            try {
+              chapters = await requestStoryline(photos, { albumType, title });
+            } catch (e) {
+              console.info('[Storyline] regenerate unavailable; using local storyline.', e);
+              chapters = buildFallbackStoryline(photos, albumType);
+            } finally {
+              render();
+              regenerateStorylineBtn.disabled = false;
+              confirmStorylineBtn.disabled = false;
+              regenerateStorylineBtn.textContent = '重新生成';
+            }
+          };
+
+          confirmStorylineBtn.onclick = () => {
+            chapters = normalizeStoryline(collectStorylineFromPreview(chapters), photos, albumType);
+            cleanup();
+            resolve(chapters);
+          };
+        });
+      }
+
+      function createLocalPreviewPhotos(files, fallbackCaptions) {
+        releaseUploadedObjectUrls();
+        return files.map((file, i) => {
+          const url = URL.createObjectURL(file);
+          uploadedObjectUrls.push(url);
+          return {
+            id: `local_${Date.now().toString(36)}_${i}`,
+            src: url,
+            caption: fallbackCaptions[i],
+            persisted: false
+          };
+        });
+      }
+
+      function pickBestPhotoUrl(photo) {
+        if (!photo) return '';
+        if (CAN_USE_WEBP && photo.srcWebp) return String(photo.srcWebp);
+        return photo.src ? String(photo.src) : '';
+      }
+
+      function preloadImageUrl(url, perImageTimeoutMs) {
+        return new Promise(resolve => {
+          if (!url) return resolve({ url, ok: false, reason: 'empty' });
+
+          const img = new Image();
+          let done = false;
+          const finish = (ok, reason) => {
+            if (done) return;
+            done = true;
+            try {
+              img.onload = null;
+              img.onerror = null;
+            } catch (_) {}
+            resolve({ url, ok, reason });
+          };
+
+          const t = setTimeout(() => finish(false, 'timeout'), perImageTimeoutMs);
+          img.onload = () => {
+            clearTimeout(t);
+            finish(true, 'load');
+          };
+          img.onerror = () => {
+            clearTimeout(t);
+            finish(false, 'error');
+          };
+
+          // 避免某些浏览器对同 URL 复用连接导致的 race；并尽量走缓存
+          try { img.decoding = 'async'; } catch (_) {}
+          img.src = url;
+        });
+      }
+
+      async function preloadAlbumPhotos(photos, { overallTimeoutMs = 15000, perImageTimeoutMs = 8000 } = {}) {
+        const urls = (photos || []).map(pickBestPhotoUrl).filter(Boolean);
+        const total = urls.length;
+        if (total === 0) return { total: 0, loaded: 0, failed: 0, timeout: false };
+
+        let done = 0;
+        let loaded = 0;
+        let failed = 0;
+
+        const tasks = urls.map(u => preloadImageUrl(u, perImageTimeoutMs).then(r => {
+          done += 1;
+          if (r.ok) loaded += 1;
+          else failed += 1;
+          setProgress(Math.round((done / total) * 100), `📸 正在加载照片... (${done}/${total})`);
+          return r;
+        }));
+
+        const result = await withTimeout(Promise.allSettled(tasks), overallTimeoutMs);
+        const timeout = result === 'timeout';
+        // 即便超时也继续：避免卡死在 loading
+        setProgress(100, timeout ? '📸 加载超时，继续进入...' : '📸 照片加载完成');
+        return { total, loaded, failed, timeout };
+      }
+
+      async function warmDecodeBookImages({ timeoutMs = 2500 } = {}) {
+        // 进一步确保“下载完成但未解码”时，翻页不会出现短暂白屏
+        const imgs = Array.from(book.querySelectorAll('img'));
+        if (imgs.length === 0) return;
+
+        const decodePromises = imgs.map(img => {
+          if (img.complete && img.naturalWidth > 0 && typeof img.decode === 'function') {
+            return img.decode().catch(() => {});
+          }
+          // 对未 complete 的图片，等 load/error 即可
+          return new Promise(resolve => {
+            const onDone = () => {
+              img.removeEventListener('load', onDone);
+              img.removeEventListener('error', onDone);
+              resolve();
+            };
+            img.addEventListener('load', onDone, { once: true });
+            img.addEventListener('error', onDone, { once: true });
+          });
+        });
+
+        await withTimeout(Promise.allSettled(decodePromises), timeoutMs);
+      }
+
+      (async function boot() {
+        setProgress(0, '✨ 准备进入...');
+
+        // 提前解析 albumType，确保 localStorage key 正确
+        const urlParams = new URLSearchParams(window.location.search);
+        albumType = urlParams.get('album') || 'default';
+
+        // 尽早加载用户设置（主题/音乐），并初始化 UI
+        loadSettings();
+        renderThemes();
+        renderMusic();
+        bgm.preload = 'none';
+        bgm.src = currentTrack;
+
+        // 若是内置相册，先触发进入（内部会做强力预加载）
+        if (albumType === 'baby' || albumType === 'wedding') {
+          await checkUrlParams();
+        }
+
+        const tasks = [];
+        tasks.push({ name: '启用离线缓存', p: registerServiceWorker() });
+        tasks.push({ name: '预热背景音乐', p: preloadUrl(currentTrack || 'assets/bgm.mp3') });
+
+        // 预热“首屏第一张图”（WebP 体积极小，弱网体验显著）
+        if (albumType === 'baby') {
+          tasks.push({ name: '预热首张照片', p: preloadUrl('assets/opt/photo_1.webp') });
+        } else if (albumType === 'wedding') {
+          tasks.push({ name: '预热首张照片', p: preloadUrl('assets/opt/wedding/img_v3_02105_09d5c28a-b9ad-45b6-b430-3736e2f9b0fg.webp') });
+        }
+
+        let done = 0;
+        const total = Math.max(1, tasks.length);
+        tasks.forEach(t => {
+          Promise.resolve(t.p).catch(() => {}).finally(() => {
+            done += 1;
+            const pct = 10 + Math.round((done / total) * 85);
+            setProgress(pct, done === total ? '✨ 进入完成' : `✨ ${t.name}...`);
+          });
+        });
+
+        await withTimeout(Promise.allSettled(tasks.map(t => t.p)), 2500);
+        setProgress(100, '✨ 已就绪');
+        document.body.classList.add('ready');
+
+        // 非内置相册（默认页）在 ready 后再解析 URL 参数
+        if (!(albumType === 'baby' || albumType === 'wedding')) {
+          await checkUrlParams();
+        }
+      })();
+
+      // Book Logic
+      function updateBook() {
+        const pageElements = Array.from(document.querySelectorAll('.book .page'));
+        const total = pageElements.length;
+        pageElements.forEach((p, i) => {
+          const isFlipped = i < currentPage;
+          p.classList.toggle('flipped', isFlipped);
+          
+          // --- Flip Direction & Z-Index logic ---
+          // 1. rotateY should go from 0deg to -180deg (Counter-Clockwise) for right-to-left flip.
+          // 2. z-index must ensure the stack order is correct on both sides.
+          // 3. During transition, 'is-turning' (z-index 101) ensures the moving page is on top.
+          
+          let z = 0;
+          if (i === currentPage) {
+            z = 100; // Current right page
+          } else if (i < currentPage) {
+            z = i + 1; // Left stack (higher index on top)
+          } else {
+            z = total - i; // Right stack (lower index on top)
+          }
+          p.style.zIndex = z;
+        });
+        document.getElementById('pageInfo').innerText = `${currentPage + 1} / ${total}`;
+        document.getElementById('scene').classList.toggle('is-open', currentPage > 0);
+
+      }
+
+      function buildPhotoSide(photo, fallbackCaption) {
+        return {
+          className: '',
+          content: `
+            <div class="content-box">
+              ${buildPhotoMarkup(photo)}
+              <div class="caption">${escapeHtml(photo.caption || fallbackCaption)}</div>
+            </div>
+          `
+        };
+      }
+
+      function buildChapterSide(chapter, index, count) {
+        return {
+          className: 'chapter-side',
+          content: `
+            <div class="chapter-content">
+              <div class="chapter-number">CHAPTER ${String(index + 1).padStart(2, '0')}</div>
+              <h2 class="chapter-page-title">${escapeHtml(chapter.title || `第${index + 1}章`)}</h2>
+              <p class="chapter-page-description">${escapeHtml(chapter.description || '这些照片组成了一段温暖回忆。')}</p>
+              <div class="chapter-photo-count">${count} 张照片</div>
+            </div>
+          `
+        };
+      }
+
+      function buildStorySides(photoData, chapters) {
+        const byId = new Map(photoData.map(photo => [String(photo.id || ''), photo]));
+        const used = new Set();
+        const sides = [];
+
+        (Array.isArray(chapters) ? chapters : []).forEach((chapter, index) => {
+          const chapterPhotos = [];
+          (chapter.photo_ids || []).forEach(rawId => {
+            const id = String(rawId);
+            const photo = byId.get(id);
+            if (photo && !used.has(id)) {
+              chapterPhotos.push(photo);
+              used.add(id);
+            }
+          });
+          if (chapterPhotos.length === 0) return;
+
+          sides.push(buildChapterSide(chapter, index, chapterPhotos.length));
+          chapterPhotos.forEach(photo => sides.push(buildPhotoSide(photo, '精选瞬间 ✨')));
+        });
+
+        photoData.forEach(photo => {
+          const id = String(photo.id || '');
+          if (!used.has(id)) sides.push(buildPhotoSide(photo, '温暖回忆 ☀️'));
+        });
+        return sides;
+      }
+
+      function generateAlbum(photoData, title = "我们的回忆录", chapters = []) {
+        book.innerHTML = '';
+        
+        let introTitle = "致 特别的你";
+        let introText = "无论时光如何流逝，这些瞬间永远闪耀。";
+
+        if (albumType === 'baby') {
+          introTitle = "致最亲爱的宝宝";
+          introText = "愿你慢慢长大，被这世界温柔相待。";
+        } else if (albumType === 'wedding') {
+          introTitle = "致我们最美的爱情";
+          introText = "往后余生，执子之手，与子偕老。";
+        }
+
+        // 1. Cover
+        const coverPage = document.createElement('div');
+        coverPage.className = 'page';
+        // Add click handler to page
+        coverPage.onclick = (e) => {
+           if (currentPage === 0) document.getElementById('nextBtn').click();
+        };
+        coverPage.innerHTML = `
+          <div class="page-side page-front cover-side">
+            <div class="cover-title">${formatAlbumTitle(title)}</div>
+          </div>
+          <div class="page-side page-back centered-box">
+            <div class="content-box centered-box">
+              <h2 style="font-family:var(--font-display);">${introTitle}</h2>
+              <p>${introText}</p>
+            </div>
+          </div>
+        `;
+        book.appendChild(coverPage);
+
+        // 2. AI story chapters and photos (paired into physical pages)
+        const storySides = buildStorySides(photoData, chapters);
+        for (let i = 0; i < storySides.length; i += 2) {
+          const photoPage = document.createElement('div');
+          photoPage.className = 'page';
+          const pIndex = book.querySelectorAll('.page').length;
+          
+          photoPage.onclick = (e) => {
+            const rect = photoPage.getBoundingClientRect();
+            const clickX = e.clientX - rect.left;
+            if (clickX > rect.width / 2) {
+              if (currentPage === pIndex) document.getElementById('nextBtn').click();
+            } else {
+              if (currentPage === pIndex + 1) document.getElementById('prevBtn').click();
+            }
+          };
+
+          const frontSide = storySides[i];
+          const backSide = storySides[i + 1] || {
+            className: '',
+            content: `
+              <div class="content-box centered-box">
+                <h3>记录点滴</h3>
+                <p>愿每一份快乐都能被定格。</p>
+              </div>
+            `
+          };
+
+          photoPage.innerHTML = `
+            <div class="page-side page-front ${frontSide.className}">${frontSide.content}</div>
+            <div class="page-side page-back ${backSide.className}">${backSide.content}</div>
+          `;
+          book.appendChild(photoPage);
+        }
+
+        // 3. Ending
+        const endPage = document.createElement('div');
+        endPage.className = 'page';
+        const eIndex = book.querySelectorAll('.page').length;
+        endPage.onclick = () => {
+           if (currentPage === eIndex) {} // Last page
+           else document.getElementById('prevBtn').click();
+        };
+        endPage.innerHTML = `
+          <div class="page-side page-front centered-box">
+            <div class="content-box centered-box">
+              <h1 style="font-size:3rem;">❤️</h1>
+              <h2 style="font-family:var(--font-display);">未完待续...</h2>
+            </div>
+          </div>
+          <div class="page-side page-back"></div>
+        `;
+        book.appendChild(endPage);
+
+        currentPage = 0;
+        updateBook();
+        albumGeneratedOnce = true;
+      }
+
+      // ---- LLM 驱动的 Theme/BGM 推荐（完全可选的外部能力钩子） ----
+      
+      function getLocalRecommendation(albumType) {
+        if (albumType === 'baby') {
+          return { themeId: 'baby-blue', trackSrc: 'assets/music/lullaby.mp3' };
+        }
+        if (albumType === 'wedding') {
+          return { themeId: 'romantic-wedding', trackSrc: 'assets/bgm.mp3' };
+        }
+        return { themeId: 'classic', trackSrc: tracks[0].src };
+      }
+
+      // Optional LLM call hooked to Python backend serve.py. Static deployments keep working via local fallback.
+      window.LLM_THEME_BGM_RECOMMENDER = async function(payload) {
+        console.log("Asking LLM to recommend for:", payload.albumType);
+        const fallback = getLocalRecommendation(payload.albumType);
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+        try {
+          const res = await fetch(apiUrl('/api/recommend'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+            credentials: 'include',
+            signal: controller.signal
+          });
+          if (!res.ok) return fallback;
+
+          const data = await res.json();
+          console.log("LLM Recommendation received:", data);
+          return data;
+        } catch (e) {
+          console.info("LLM recommendation unavailable; using local fallback.");
+          return fallback;
+        } finally {
+          clearTimeout(timeoutId);
+        }
+      };
+
+      async function applyLLMRecommendationForAlbum({ albumType: rawType, title, photos, captions }) {
+        if (typeof window === 'undefined' || typeof window.LLM_THEME_BGM_RECOMMENDER !== 'function') {
+          return;
+        }
+
+        // 数据沙箱：仅允许 baby / wedding / default 三类，严禁在一次调用中交叉引用
+        const safeType = (rawType === 'baby' || rawType === 'wedding') ? rawType : 'default';
+
+        const payload = {
+          albumType: safeType,
+          title: String(title || ''),
+          // 仅传入当前相册的文案与图片元数据，不混用其他场景的数据
+          captions: Array.isArray(captions) ? captions.slice(0, 30).map(c => String(c || '')) : [],
+          photos: Array.isArray(photos)
+            ? photos.map(p => ({ src: String(p.src || ''), caption: p.caption ? String(p.caption) : '' }))
+            : [],
+          // 提供可选候选集，由外部 LLM 决定具体组合
+          themes: themes.map(t => ({
+            id: t.id,
+            name: t.name,
+            mood: t.mood,
+            scenes: t.scenes,
+            palette: t.palette,
+            visual: t.visual
+          })),
+          tracks: tracks.map(t => ({
+            src: t.src,
+            name: t.name,
+            mood: t.mood,
+            energy: t.energy,
+            scenes: t.scenes
+          }))
+        };
+
+        try {
+          const result = await window.LLM_THEME_BGM_RECOMMENDER(payload);
+          if (!result || typeof result !== 'object') return;
+
+          const { themeId, trackSrc } = result;
+
+          if (themeId && themes.some(t => t.id === themeId)) {
+            recommendedThemeId = themeId;
+            currentTheme = themeId;
+          }
+
+          if (trackSrc && tracks.some(t => t.src === trackSrc)) {
+            recommendedTrackSrc = trackSrc;
+            currentTrack = trackSrc;
+          }
+
+          // 应用到 UI，并写入 localStorage，使其成为该相册类型的“智能默认”
+          themes.forEach(theme => document.body.classList.remove(`theme-${theme.id}`));
+          document.body.classList.add(`theme-${currentTheme}`);
+          bgm.src = currentTrack;
+          saveSettings();
+          renderThemes();
+          renderMusic();
+        } catch (e) {
+          console.warn('[LLM] recommendation error', e);
+        }
+      }
+
+      async function checkUrlParams() {
+        const urlParams = new URLSearchParams(window.location.search);
+        albumType = urlParams.get('album') || 'default';
+        loadSettings();
+        renderThemes();
+        renderMusic();
+
+        // --- Rich Caption Library & Shuffle Logic ---
+        const captionPools = {
+          baby: [
+            "初见你的第一眼，世界都亮了。",
+            "小小的手心，牵动着全家人的心。",
+            "看你可爱的模样，心都被融化了。",
+            "第一次翻身，全家人都为你鼓掌。",
+            "满月啦！愿你平安喜乐，岁岁年年。",
+            "你是坠入凡间的小天使，带着满身星光。",
+            "愿你眼里有星辰，心中有良善。",
+            "小脚丫，大梦想，一步一个脚印去探索世界。",
+            "你是上天赐予我们最珍贵的礼物。",
+            "看你一天天长大，是这个世界上最幸福的事。",
+            "小小的脸庞，大大的好奇，这个世界真奇妙。",
+            "你是我们生命中的阳光，照亮了所有的角落。",
+            "愿你的童年充满欢笑，无忧无虑。",
+            "每一声啼哭都是成长的节奏，每一张笑脸都是爱的馈赠。",
+            "宝贝，愿你慢慢长大，被这世界温柔相待。",
+            "你的每一个小动作，都在诉说着生命的奇迹。",
+            "你是星辰大海，是我们永远的牵挂。",
+            "陪伴你成长的每一刻，都值得被永远铭记。",
+            "你是未来的希望，是绽放在我们心尖的花朵。",
+            "愿你此生尽兴，赤诚善良。"
+          ],
+          wedding: [
+            "执子之手，与子偕老。",
+            "往后余生，全都是你。",
+            "星光坠入眼里，而你落进我心里。",
+            "人间烟火，山河远阔，无一是你，无一不是你。",
+            "遇见你的那一天，风都很甜。",
+            "从今以后，晨昏是你，四季也是你。",
+            "你是平淡生活里的英雄梦想。",
+            "众生皆苦，唯你是草莓味。",
+            "我的世界因为有你，才变得完整。",
+            "爱是心动，更是余生漫长的相守。",
+            "你是这世间所有的温柔与浪漫。",
+            "陪你走过漫漫长路，直到白发苍苍。",
+            "愿得一人心，白首不相离。",
+            "你是我的满目星河，也是我的余生所向。",
+            "爱情最好的样子，就是你在闹，我在笑。",
+            "这一刻的誓言，我们将用一生去守护。",
+            "无论贫穷富有，无论健康疾病，我永远爱你。",
+            "感谢命运让我们相遇，感谢你出现在我的生命里。",
+            "你是我的唯一，也是我的全部。",
+            "愿我们的爱情，如初见般美好，如岁月般绵长。"
+          ],
+          default: [
+            "精选瞬间 ✨", "温暖回忆 ☀️", "这一刻，永恒 🕊️", "时光不老，我们不散。", 
+            "记录美好的点点滴滴。", "留住最灿烂的笑容。", "岁月静好，现世安稳。",
+            "每一个瞬间都值得被珍藏。", "生活中的小确幸。", "愿美好如期而至。"
+          ]
+        };
+
+        function shuffleArray(array) {
+          const arr = [...array];
+          for (let i = arr.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [arr[i], arr[j]] = [arr[j], arr[i]];
+          }
+          return arr;
+        }
+
+        const getCaptions = (type, count) => {
+          let pool = captionPools[type] || captionPools.default;
+          let result = [];
+          while (result.length < count) {
+            result = result.concat(shuffleArray(pool));
+          }
+          return result.slice(0, count);
+        };
+
+        if (albumType === 'uploaded') {
+          const savedAlbum = loadUploadedAlbum();
+          if (savedAlbum) {
+            if (savedAlbum.theme && themes.some(theme => theme.id === savedAlbum.theme)) {
+              currentTheme = savedAlbum.theme;
+              themes.forEach(theme => document.body.classList.remove(`theme-${theme.id}`));
+              document.body.classList.add(`theme-${currentTheme}`);
+            }
+            if (savedAlbum.track && tracks.some(track => track.src === savedAlbum.track)) {
+              currentTrack = savedAlbum.track;
+              bgm.src = currentTrack;
+            }
+            renderThemes();
+            renderMusic();
+            if (!hasPersistedSettings) {
+              await applyLLMRecommendationForAlbum({
+                albumType: 'default',
+                title: savedAlbum.title.replace(/<br\s*\/?>/gi, ' '),
+                photos: savedAlbum.photos,
+                captions: savedAlbum.photos.map(p => p.caption)
+              });
+            }
+            await enterAlbum(savedAlbum.photos, savedAlbum.title, {
+              force: true,
+              chapters: savedAlbum.chapters
+            });
+          } else {
+            albumType = 'default';
+            window.history.replaceState({}, '', window.location.pathname);
+          }
+        } else if (albumType === 'baby') {
+          // Story-driven photo order: narrative arc from "初见" to "成长"
+          // Grouped by chapters, alternating themes for visual rhythm
+          const storyOrder = [
+            // Ch1: 初见 — first glimpses, calm & curious
+            { file: 5,  caption: "初见这个世界，一切都好新鲜。" },
+            { file: 11, caption: "小小的你，安静地打量着周围。" },
+            // Ch2: 探索 — tummy time, discovering the world
+            { file: 14, caption: "第一次趴趴，小拳头撑起了整个世界。" },
+            { file: 6,  caption: "好奇的眼神，像在说“你是谁呀？”" },
+            // Ch3: 小骑士登场 — pony theme intro
+            { file: 4,  caption: "变身小骑士，准备出发去冒险！" },
+            { file: 17, caption: "和小马驹们在一起，世界真有趣。" },
+            // Ch4: 甜蜜日常 — cozy everyday moments
+            { file: 1,  caption: "躺在玩偶中间，这就是满满的幸福。" },
+            { file: 2,  caption: "咧嘴一笑，全家人都融化了。" },
+            // Ch5: 越来越活泼 — getting more expressive
+            { file: 13, caption: "打了个大大的哈欠，探索世界也要休息呀。" },
+            { file: 12, caption: "眼睛亮亮的，好像有讲不完的故事。" },
+            // Ch6: 小马驹的午后 — pony theme continued
+            { file: 8,  caption: "窝在暖暖的小窝里，好安心。" },
+            { file: 9,  caption: "和玩具小马对视，这是你最好的朋友吗？" },
+            // Ch7: 渐渐长大 — growing up
+            { file: 3,  caption: "坐得越来越稳，每天都在进步呢。" },
+            { file: 18, caption: "小手抓着玩具，满脸都是成就感。" },
+            // Ch8: 欢乐时光 — big smiles & joy
+            { file: 15, caption: "笑得像一颗小太阳，照亮了整间屋子。" },
+            { file: 16, caption: "嘻嘻，被逗乐了！" },
+            // Ch9: 告别与期许 — closing
+            { file: 10, caption: "安安静静，像个思考人生的小哲学家。" },
+            { file: 19, caption: "伸个懒腰，今天也是元气满满的一天。" },
+            { file: 20, caption: "小手比划着，好像在说“我爱你们”。" },
+            { file: 7,  caption: "满月快乐！未来的每一天，都值得期待。" }
+          ];
+
+          const babyPhotos = storyOrder.map(item => ({
+            src: `assets/photo_${item.file}.jpg`,
+            srcWebp: `assets/opt/photo_${item.file}.webp`,
+            caption: item.caption
+          }));
+
+          // 若当前相册类型尚无用户自定义设置，则尝试用 LLM 做一次智能推荐
+          if (!hasPersistedSettings) {
+            await applyLLMRecommendationForAlbum({
+              albumType,
+              title: '宝宝满月·成长手记',
+              photos: babyPhotos,
+              captions: babyPhotos.map(p => p.caption)
+            });
+          }
+
+          await enterAlbum(babyPhotos, "宝宝满月<br>成长手记");
+        } else if (albumType === 'wedding') {
+          const weddingFiles = [
+          "img_v3_02105_09d5c28a-b9ad-45b6-b430-3736e2f9b0fg.png",
+            "img_v3_02105_1c748d0d-2cf3-480a-8695-793c99e8c12g.png",
+            "img_v3_02105_3143fb02-d372-4994-a730-9568bee0d3ag.png",
+            "img_v3_02105_6c07dad0-789e-4786-bd65-c446d34597dg.png",
+            "img_v3_02105_875db034-0c7d-4e45-a19a-6d06163cdf7g.png",
+            "img_v3_02105_8b34d5b9-2c98-4de1-ade5-5c03fa789cbg.png",
+            "img_v3_02105_bff8737e-38d8-4783-897f-dee2c68c14ag.png",
+            "img_v3_02105_c39dafdb-4f36-44e9-b679-fadcb8037beg.png",
+            "img_v3_02105_dd29db9b-b40f-464d-b957-8d529ab3345g.png"
+          ];
+          const captions = getCaptions('wedding', weddingFiles.length);
+          const weddingPhotos = weddingFiles.map((filename, i) => ({
+            src: `assets/wedding/${filename}`,
+            srcWebp: `assets/opt/wedding/${filename.replace(/\.png$/i, '.webp')}`,
+            caption: captions[i]
+          }));
+
+          if (!hasPersistedSettings) {
+            await applyLLMRecommendationForAlbum({
+              albumType,
+              title: '我们最美的爱情故事',
+              photos: weddingPhotos,
+              captions
+            });
+          }
+
+          await enterAlbum(weddingPhotos, "我们最美的<br>爱情故事");
+        }
+      }
+
+      async function enterAlbum(photos, title, { force = false, chapters = [] } = {}) {
+        // 1) 强力预加载：确保图片在任何重排/3D 变换前已完成 onload（或超时兜底）
+        showLoader('📸 正在加载照片...');
+        await preloadAlbumPhotos(photos, { overallTimeoutMs: 15000, perImageTimeoutMs: 8000 });
+
+        // 2) 生成 DOM（仅在必要时）
+        // Once photos are generated and loaded, Theme/Music switching should never rebuild `.book`.
+        // Only regenerate when explicitly forced (e.g. user uploads a new set).
+        if (!albumGeneratedOnce || force) {
+          generateAlbum(photos, title, chapters);
+        }
+
+        // 3) 进一步 warm decode，降低“已下载但未解码”的短暂白屏
+        await warmDecodeBookImages({ timeoutMs: 2500 });
+
+        // 4) 展示相册并适配尺寸
+        uploadContainer.classList.add('hidden');
+        albumMain.classList.remove('hidden');
+        albumFooter.classList.remove('hidden');
+
+        // 进入相册时，立即应用一次尺寸（尤其是横屏/旋转后）
+        applyResponsiveBookSize();
+        updateBook();
+
+        hideLoader();
+
+        // 进入相册，开始播放音乐（如果是用户操作或已经过初始交互）
+        if (currentTrack) {
+          switchTrack(currentTrack, { autoplay: true });
+        }
+      }
+
+      // Actions
+      startBtn.onclick = () => photoUpload.click();
+
+      photoUpload.onchange = async (e) => {
+        const files = Array.from(e.target.files);
+        if (files.length === 0) return;
+
+        const albumTitle = "我们的<br>回忆录";
+        const plainTitle = "我们的回忆录";
+        const effectiveAlbumType = albumType === 'uploaded' ? 'default' : (albumType || 'default');
+        const fallbackCaptions = getCaptions(effectiveAlbumType, files.length);
+        let photoData = [];
+        let chapters = [];
+
+        try {
+          showLoader('☁️ 正在上传照片...');
+          setProgress(8, '☁️ 正在上传照片...');
+          photoData = ensurePhotoIds(await uploadFilesToServer(files));
+          setProgress(45, `☁️ 上传完成，正在生成配文...`);
+
+          try {
+            photoData = await requestAICaptions(photoData, {
+              albumType: effectiveAlbumType,
+              title: plainTitle,
+              fallbackCaptions
+            });
+            setProgress(72, '🪄 AI 配文生成完成');
+          } catch (captionError) {
+            console.info('[Caption] unavailable; using local captions.', captionError);
+            photoData = photoData.map((photo, i) => ({
+              ...photo,
+              caption: fallbackCaptions[i] || '值得珍藏的美好瞬间'
+            }));
+            setProgress(72, '🪄 已使用本地配文');
+          }
+        } catch (uploadError) {
+          console.info('[Upload] backend unavailable; using local preview.', uploadError);
+          setProgress(35, '📸 后端不可用，改用本地预览...');
+          photoData = ensurePhotoIds(createLocalPreviewPhotos(files, fallbackCaptions));
+        }
+
+        setProgress(82, '🧭 AI 正在规划故事线...');
+        try {
+          chapters = await requestStoryline(photoData, {
+            albumType: effectiveAlbumType,
+            title: plainTitle
+          });
+          setProgress(88, '🧭 故事线生成完成');
+        } catch (storylineError) {
+          console.info('[Storyline] unavailable; using local storyline.', storylineError);
+          chapters = buildFallbackStoryline(photoData, effectiveAlbumType);
+          setProgress(88, '🧭 已生成本地故事线');
+        }
+
+        hideLoader();
+        chapters = await showStorylinePreview(photoData, chapters, {
+          albumType: effectiveAlbumType,
+          title: plainTitle
+        });
+        photoData = orderPhotosByChapters(photoData, chapters);
+
+        showLoader('🎼 正在推荐主题和音乐...');
+        setProgress(92, '🎼 正在推荐主题和音乐...');
+        await applyLLMRecommendationForAlbum({
+          albumType: effectiveAlbumType,
+          title: plainTitle,
+          photos: photoData,
+          captions: photoData.map(p => p.caption)
+        });
+
+        if (persistUploadedAlbum(photoData, albumTitle, chapters)) {
+          albumType = 'uploaded';
+          const newUrl = `${window.location.pathname}?album=uploaded`;
+          window.history.replaceState({ path: newUrl }, '', newUrl);
+        }
+
+        setProgress(96, '📖 正在生成相册...');
+        await enterAlbum(photoData, albumTitle, { force: true, chapters });
+        photoUpload.value = '';
+      };
+
+      document.getElementById('nextBtn').onclick = () => { 
+        const pageElements = document.querySelectorAll('.book .page');
+        if(currentPage < pageElements.length - 1) { 
+          const page = pageElements[currentPage];
+          page.classList.add('is-turning');
+          setTimeout(() => page.classList.remove('is-turning'), 650);
+          currentPage++; 
+          updateBook(); 
+        } 
+      };
+      document.getElementById('prevBtn').onclick = () => { 
+        if(currentPage > 0) { 
+          currentPage--; 
+          const pageElements = document.querySelectorAll('.book .page');
+          const page = pageElements[currentPage];
+          page.classList.add('is-turning');
+          setTimeout(() => page.classList.remove('is-turning'), 650);
+          updateBook(); 
+        } 
+      };
+
+      editorBtn.onclick = (e) => { e.stopPropagation(); editorPanel.classList.toggle('open'); historyPanel.classList.remove('open'); };
+      document.getElementById('homeBtn').onclick = () => goHome();
+
+      function goHome() {
+        albumMain.classList.add('hidden');
+        albumFooter.classList.add('hidden');
+        uploadContainer.classList.remove('hidden');
+        editorPanel.classList.remove('open');
+        historyPanel.classList.remove('open');
+        safeResetAudio();
+        isPlaying = false;
+        currentPage = 0;
+        book.innerHTML = '';
+        albumGeneratedOnce = false;
+        releaseUploadedObjectUrls();
+        updateBook();
+        // 清除 URL 参数，回到干净的上传页
+        const newUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
+        window.history.pushState({ path: newUrl }, '', newUrl);
+        albumType = 'default';
+      }
+
+      historyBtn.onclick = (e) => { e.stopPropagation(); historyPanel.classList.toggle('open'); editorPanel.classList.remove('open'); };
+      
+      document.getElementById('closeHistory').onclick = () => historyPanel.classList.remove('open');
+
+      saveBtn.onclick = () => {
+        saveSettings();
+        saveModal.classList.add('active');
+        document.getElementById('saveLoader').classList.remove('hidden');
+        document.getElementById('saveSuccess').classList.add('hidden');
+        setTimeout(() => {
+          document.getElementById('saveLoader').classList.add('hidden');
+          document.getElementById('saveSuccess').classList.remove('hidden');
+        }, 2000);
+      };
+
+      musicBtn.onclick = () => {
+        if (isPlaying) {
+          // pause 事件会统一更新 UI/state
+          bgm.pause();
+          return;
+        }
+
+        // 第一次播放：强制 preload=auto，降低“点了没声”的体感。
+        bgm.preload = 'auto';
+        switchTrack(currentTrack || tracks[0].src, { autoplay: true });
+      };
+
+      // Auto Play
+      let autoTimer = null;
+      document.getElementById('autoBtn').onclick = () => {
+        if(autoTimer) {
+          clearInterval(autoTimer); autoTimer = null;
+          document.getElementById('autoBtn').classList.remove('active');
+        } else {
+          document.getElementById('autoBtn').classList.add('active');
+          autoTimer = setInterval(() => {
+            const pageElements = document.querySelectorAll('.book .page');
+            if(currentPage < pageElements.length - 1) { 
+              const page = pageElements[currentPage];
+              page.classList.add('is-turning');
+              setTimeout(() => page.classList.remove('is-turning'), 650);
+              currentPage++; 
+              updateBook(); 
+            }
+            else { currentPage = 0; updateBook(); }
+          }, 4000);
+        }
+      };
+
+      // Particles Engine
+      const canvas = document.getElementById('particles');
+      const ctx = canvas.getContext('2d');
+      function resizeCanvas() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+      window.addEventListener('resize', resizeCanvas); resizeCanvas();
+
+      // ---- 横屏/旋转自适应：动态计算 book 尺寸，防止被裁剪 ----
+      const sceneEl = document.getElementById('scene');
+      const BOOK_RATIO = 420 / 580; // width/height
+      let sizeTimer = null;
+
+      function applyResponsiveBookSize() {
+        // 仅在相册展示时执行，避免干扰上传页布局
+        if (albumMain.classList.contains('hidden')) return;
+
+        // 仅对移动端（<= 950px）启用 JS 强制尺寸，避免桌面端样式意外改变
+        if (!window.matchMedia('(max-width: 950px)').matches) {
+          sceneEl.style.width = '';
+          sceneEl.style.height = '';
+          sceneEl.style.removeProperty('--scene-shift-open');
+          sceneEl.style.removeProperty('--scene-scale');
+          return;
+        }
+
+        const vw = Math.max(1, window.innerWidth);
+        const vh = Math.max(1, window.innerHeight);
+        const isLandscape = vw > vh;
+
+        // 留出一点边距，避免 iOS safe-area + fixed controls 导致“刚好贴边被裁”
+        const maxW = Math.max(1, vw - 24);
+        const maxH = Math.max(1, vh - 24);
+
+        // 高度优先：横屏给足高度，竖屏参考原本 75vh
+        const targetH0 = isLandscape ? maxH * 0.90 : maxH * 0.72;
+        let targetW = targetH0 * BOOK_RATIO;
+        if (targetW > maxW * 0.92) targetW = maxW * 0.92;
+        let targetH = targetW / BOOK_RATIO;
+
+        // 计算 open shift：确保翻开后不被右侧裁剪
+        const maxShift = Math.max(0, (maxW - targetW) / 2);
+        const desiredShift = isLandscape ? targetW * 0.35 : targetW * 0.50;
+        const shiftOpen = Math.min(desiredShift, maxShift);
+
+        sceneEl.style.width = Math.round(targetW) + 'px';
+        sceneEl.style.height = Math.round(targetH) + 'px';
+        sceneEl.style.setProperty('--scene-shift-open', Math.round(shiftOpen) + 'px');
+        sceneEl.style.setProperty('--scene-scale', '1');
+      }
+
+      function scheduleResponsiveBookSize() {
+        clearTimeout(sizeTimer);
+        sizeTimer = setTimeout(applyResponsiveBookSize, 120);
+      }
+
+      window.addEventListener('resize', scheduleResponsiveBookSize, { passive: true });
+      window.addEventListener('orientationchange', () => setTimeout(applyResponsiveBookSize, 250), { passive: true });
+      
+      const pts = Array.from({length: 60}, () => ({
+        x: Math.random() * canvas.width, y: Math.random() * canvas.height,
+        r: Math.random() * 4 + 2, v: Math.random() * 1.5 + 0.5, o: Math.random() * 0.7 + 0.1,
+        type: Math.random() > 0.6 ? 'special' : 'dot',
+        rot: Math.random() * 360, rotV: (Math.random() - 0.5) * 4
+      }));
+
+      function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        const isWedding = document.body.classList.contains('theme-romantic-wedding');
+        const isBaby = document.body.classList.contains('theme-baby-blue');
+        
+        pts.forEach(p => {
+          ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot * Math.PI / 180);
+          
+          if (isWedding && p.type === 'special') {
+             // Pink Petals
+             ctx.beginPath(); ctx.ellipse(0, 0, p.r * 2, p.r * 1, 0, 0, Math.PI * 2);
+             ctx.fillStyle = `rgba(255, 182, 193, ${p.o})`; ctx.fill();
+          } else if (isBaby && p.type === 'special') {
+             // Bubbles
+             ctx.beginPath(); ctx.arc(0, 0, p.r * 1.5, 0, Math.PI * 2);
+             ctx.strokeStyle = `rgba(255, 255, 255, ${p.o})`; ctx.lineWidth = 1; ctx.stroke();
+          } else {
+             // Standard dots / sparkles
+             ctx.beginPath(); ctx.arc(0, 0, p.r * 0.6, 0, Math.PI * 2);
+             ctx.fillStyle = `rgba(255, 255, 255, ${p.o + 0.2})`; ctx.fill();
+          }
+          ctx.restore();
+          
+          p.y -= p.v; p.rot += p.rotV;
+          // Drift slightly horizontally for petals
+          if (isWedding) p.x += Math.sin(p.y / 50) * 0.5;
+          
+          if(p.y < -20) { p.y = canvas.height + 20; p.x = Math.random() * canvas.width; }
+
+        });
+        requestAnimationFrame(draw);
+      }
+      draw();
+
+      // Init
+      renderThemes();
+      renderMusic();
+      bgm.preload = 'none'; // 初始不加载，节省流量且防止自动起播
+      bgm.src = currentTrack;
+
+      // Global click to play bgm
+      async function initAutoplay() {
+        const tryPlay = async () => {
+          // 仅当已经进入相册模式（uploadContainer 隐藏）时，才触发全局交互起播
+          if (uploadContainer.classList.contains('hidden')) {
+            const ok = await safePlayAudio('autoplay-init');
+            if (ok) {
+              removeListeners();
+            }
+          }
+        };
+
+        const removeListeners = () => {
+          ['click', 'touchstart', 'scroll', 'mousedown'].forEach(ev => {
+            document.removeEventListener(ev, tryPlay);
+          });
+        };
+
+        ['click', 'touchstart', 'scroll', 'mousedown'].forEach(ev => {
+          document.addEventListener(ev, tryPlay, { once: true });
+        });
+
+        // Initial attempt
+        await tryPlay();
+      }
+
+      initAutoplay();
+    })();
+  </script>
+</body>
+</html>
