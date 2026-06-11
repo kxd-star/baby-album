@@ -545,15 +545,20 @@ async def recommend(request: Request):
 相册标题: {title}
 部分图片配文: {json.dumps(captions[:8], ensure_ascii=False)}
 
-候选主题列表(Theme ID): {json.dumps([t.get('id', '') for t in themes if isinstance(t, dict)], ensure_ascii=False)}
-候选音乐列表(Track SRC): {json.dumps([t.get('src', '') for t in tracks if isinstance(t, dict)], ensure_ascii=False)}
+候选主题资料（包含 ID、情绪、场景、配色和视觉语言）:
+{json.dumps([t for t in themes if isinstance(t, dict)], ensure_ascii=False)}
 
-任务：根据相册照片内容、色调和氛围，选出1个最匹配的主题(Theme ID)和1个音乐(Track SRC)。
+候选音乐资料（包含 SRC、情绪、能量和适用场景）:
+{json.dumps([t for t in tracks if isinstance(t, dict)], ensure_ascii=False)}
+
+任务：根据相册照片内容、人物关系、色调、场景、情绪和叙事节奏，选出1个最匹配的主题(Theme ID)和1个音乐(Track SRC)。
+音乐无法试听，请严格依据候选音乐的 mood、energy 和 scenes 标签匹配。
 参考规则：
-- 户外、自然、绿植多：优先 forest/mint
-- 色调温暖、日常感强：优先 peach/classic
-- 婚礼、情侣、仪式感：优先 romantic-wedding/dark-gold
-- 宝宝、儿童、可爱温柔：优先 classic/baby-blue
+- 户外、自然、绿植多：优先 botanical/forest/mint
+- 城市、人物写真、构图高级：优先 editorial/gallery/minimal
+- 夜景、纪实、故事感强：优先 cinema/bokeh/starry
+- 婚礼、周年、仪式感：优先 romantic-wedding/celebration/dark-gold
+- 宝宝、儿童、亲子：优先 baby-blue/polaroid/classic
 
 请只返回合法 JSON，形如 {{"themeId": "xxx", "trackSrc": "xxx"}}。"""
 

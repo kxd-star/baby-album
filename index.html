@@ -202,6 +202,94 @@
       background: radial-gradient(circle at center, #1b2735 0%, #090a0f 100%);
     }
 
+    /* ── Curated Album Themes ── */
+    body.theme-editorial {
+      --bg: #e9edf0;
+      --cover-bg: #171717;
+      --page-bg: #ffffff;
+      --text: #171717;
+      --shadow: rgba(23, 23, 23, 0.18);
+      --accent: #e63946;
+      --font-display: 'Noto Serif SC', serif;
+      --border-radius: 2px;
+    }
+    body.theme-editorial .photo-container img {
+      border: 2px solid #171717;
+      box-shadow: 10px 10px 0 #e63946;
+    }
+
+    body.theme-botanical {
+      --bg: #dfe8e3;
+      --cover-bg: #315c45;
+      --page-bg: #f8fbf9;
+      --text: #173528;
+      --shadow: rgba(49, 92, 69, 0.2);
+      --accent: #e76f51;
+      --font-display: 'Noto Serif SC', serif;
+      --border-radius: 10px;
+    }
+    body.theme-botanical .photo-container {
+      background: #d9eee2;
+      border: 1px solid rgba(49, 92, 69, 0.18);
+    }
+
+    body.theme-polaroid {
+      --bg: #b8d8e8;
+      --cover-bg: #0f5661;
+      --page-bg: #fffdf7;
+      --text: #163b43;
+      --shadow: rgba(15, 86, 97, 0.22);
+      --accent: #f4c542;
+      --font-display: 'ZCOOL KuaiLe', cursive;
+      --border-radius: 8px;
+    }
+    body.theme-polaroid .photo-container img {
+      border: 8px solid white;
+      border-bottom-width: 24px;
+      transform: rotate(-1deg);
+      box-shadow: 0 10px 18px rgba(15, 86, 97, 0.22);
+    }
+
+    body.theme-cinema {
+      --bg: #101010;
+      --cover-bg: #8f1d24;
+      --page-bg: #181818;
+      --text: #f3ead8;
+      --shadow: rgba(0, 0, 0, 0.48);
+      --accent: #e0b35a;
+      --font-display: 'Noto Serif SC', serif;
+      --border-radius: 0px;
+    }
+    body.theme-cinema .page-side { border: 1px solid #8f1d24; }
+    body.theme-cinema .photo-container img { border-color: #e0b35a; }
+
+    body.theme-celebration {
+      --bg: #f4e8ec;
+      --cover-bg: #9b1c31;
+      --page-bg: #fffafa;
+      --text: #52101c;
+      --shadow: rgba(155, 28, 49, 0.2);
+      --accent: #d9a441;
+      --font-display: 'Noto Serif SC', serif;
+      --border-radius: 6px;
+    }
+    body.theme-celebration .page-side { border: 2px solid rgba(217, 164, 65, 0.55); }
+
+    body.theme-gallery {
+      --bg: #dce3ea;
+      --cover-bg: #2449a4;
+      --page-bg: #ffffff;
+      --text: #19243a;
+      --shadow: rgba(36, 73, 164, 0.18);
+      --accent: #ef8354;
+      --font-display: 'Inter', sans-serif;
+      --border-radius: 4px;
+    }
+    body.theme-gallery .photo-container {
+      background: #edf2f7;
+      border-left: 6px solid #ef8354;
+    }
+
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
@@ -827,41 +915,40 @@
       'use strict';
       
       const themes = [
-        { id: 'romantic-wedding', name: '🌸 绝美婚礼 (高定)', color: 'linear-gradient(135deg, #fffcf5, #ffebf0)' },
-        { id: 'baby-blue', name: '🍼 纯真宝贝 (高定)', color: 'linear-gradient(135deg, #e0f7fa, #80deea)' },
-        { id: 'dark-gold', name: '👑 黑金岁月', color: 'linear-gradient(135deg, #111, #d4af37)' },
-        { id: 'mint', name: '🍃 清新薄荷', color: '#4db6ac' },
-        { id: 'peach', name: '🍑 蜜桃乌龙', color: '#ffab91' },
-        { id: 'lavender', name: '💜 浪漫薰衣草', color: '#ba68c8' },
-        { id: 'classic', name: '经典亚麻', color: '#fdf6e3' },
-        { id: 'cyber', name: '赛博霓虹', color: '#0d0221' },
-        { id: 'minimal', name: '极简北欧', color: '#ffffff' },
-        { id: 'ink', name: '国风水墨', color: '#f4f1de' },
-        { id: 'harajuku', name: '原宿撞色', color: '#f1c40f' },
-        { id: 'forest', name: '森系呼吸', color: '#2d6a4f' },
-        { id: 'luxury', name: '黑金至尊', color: '#1a1a1a' },
-        { id: 'ocean', name: '深海之蓝', color: '#0077b6' },
-        { id: 'sunset', name: '落日余晖', color: '#fb8500' },
-        { id: 'animated-gradient', name: '动感渐变(动态)', color: 'linear-gradient(45deg, #ee7752, #e73c7e)' },
-        { id: 'bokeh', name: '梦幻光影', color: '#e94560' },
-        { id: 'starry', name: '星空流火(动态)', color: '#0b3d91' }
+        { id: 'editorial', name: '📰 高级杂志', color: 'linear-gradient(135deg, #fff, #e63946)', mood: '高级、克制、现代', scenes: ['城市写真', '旅行', '人物特写'], palette: '黑白红', visual: '杂志排版、硬朗边框' },
+        { id: 'botanical', name: '🌿 植物画册', color: 'linear-gradient(135deg, #315c45, #e76f51)', mood: '自然、安静、治愈', scenes: ['户外', '亲子', '日常生活'], palette: '森林绿、珊瑚红', visual: '自然画册、柔和留白' },
+        { id: 'polaroid', name: '📷 宝丽来日记', color: 'linear-gradient(135deg, #b8d8e8, #f4c542)', mood: '轻松、活泼、怀旧', scenes: ['朋友聚会', '旅行', '儿童'], palette: '天蓝、明黄、白色', visual: '拍立得相框、手帐感' },
+        { id: 'cinema', name: '🎞️ 电影叙事', color: 'linear-gradient(135deg, #101010, #8f1d24)', mood: '深沉、故事感、戏剧性', scenes: ['夜景', '纪实', '情侣'], palette: '黑、酒红、金色', visual: '电影海报、宽银幕质感' },
+        { id: 'celebration', name: '🥂 庆典鎏金', color: 'linear-gradient(135deg, #9b1c31, #d9a441)', mood: '喜庆、正式、珍贵', scenes: ['婚礼', '周年', '家庭庆典'], palette: '宝石红、鎏金、白色', visual: '庆典请柬、金色细节' },
+        { id: 'gallery', name: '🖼️ 当代画廊', color: 'linear-gradient(135deg, #2449a4, #ef8354)', mood: '清爽、艺术、理性', scenes: ['建筑', '艺术展', '产品与静物'], palette: '钴蓝、橙色、冷灰', visual: '画廊标签、现代网格' },
+        { id: 'romantic-wedding', name: '🌸 绝美婚礼', color: 'linear-gradient(135deg, #fffcf5, #ffebf0)', mood: '浪漫、柔美、仪式感', scenes: ['婚礼', '情侣', '纪念日'], palette: '白色、粉色', visual: '婚礼高定、柔和光影' },
+        { id: 'baby-blue', name: '🍼 纯真宝贝', color: 'linear-gradient(135deg, #e0f7fa, #80deea)', mood: '纯真、温柔、可爱', scenes: ['宝宝', '儿童', '亲子'], palette: '浅蓝、白色', visual: '柔软圆角、童趣' },
+        { id: 'dark-gold', name: '👑 黑金岁月', color: 'linear-gradient(135deg, #111, #d4af37)', mood: '庄重、奢华、经典', scenes: ['宴会', '正式肖像', '周年'], palette: '黑色、金色', visual: '黑金礼册' },
+        { id: 'mint', name: '🍃 清新薄荷', color: '#4db6ac', mood: '清新、干净、轻盈', scenes: ['日常', '户外', '美食'], palette: '薄荷绿、白色', visual: '清爽简洁' },
+        { id: 'peach', name: '🍑 蜜桃乌龙', color: '#ffab91', mood: '温暖、甜蜜、松弛', scenes: ['日常', '情侣', '美食'], palette: '蜜桃粉、白色', visual: '温暖柔和' },
+        { id: 'lavender', name: '💜 浪漫薰衣草', color: '#ba68c8', mood: '梦幻、浪漫、柔和', scenes: ['情侣', '花海', '写真'], palette: '薰衣草紫、白色', visual: '梦幻柔光' },
+        { id: 'classic', name: '经典亚麻', color: '#fdf6e3', mood: '温馨、耐看、怀旧', scenes: ['家庭', '日常', '成长记录'], palette: '亚麻色、棕色', visual: '经典纸质相册' },
+        { id: 'cyber', name: '赛博霓虹', color: '#0d0221', mood: '酷炫、未来、强烈', scenes: ['夜景', '演出', '城市'], palette: '黑色、青色、洋红', visual: '霓虹科技感' },
+        { id: 'minimal', name: '极简北欧', color: '#ffffff', mood: '克制、干净、宁静', scenes: ['建筑', '静物', '人物写真'], palette: '黑白灰', visual: '极简留白' },
+        { id: 'ink', name: '国风水墨', color: '#f4f1de', mood: '东方、含蓄、雅致', scenes: ['古风', '山水', '传统仪式'], palette: '墨色、宣纸白', visual: '水墨与书法' },
+        { id: 'harajuku', name: '原宿撞色', color: '#f1c40f', mood: '大胆、青春、欢乐', scenes: ['朋友', '派对', '街拍'], palette: '高饱和撞色', visual: '潮流贴纸感' },
+        { id: 'forest', name: '森系呼吸', color: '#2d6a4f', mood: '自然、沉静、深呼吸', scenes: ['森林', '露营', '户外'], palette: '深绿、浅绿', visual: '森林沉浸感' },
+        { id: 'luxury', name: '黑金至尊', color: '#1a1a1a', mood: '奢华、正式、强势', scenes: ['商务', '宴会', '正式肖像'], palette: '黑色、金色', visual: '高级礼册' },
+        { id: 'ocean', name: '深海之蓝', color: '#0077b6', mood: '清凉、自由、开阔', scenes: ['海边', '旅行', '夏日'], palette: '海蓝、浅蓝', visual: '海洋通透感' },
+        { id: 'sunset', name: '落日余晖', color: '#fb8500', mood: '热烈、温暖、怀念', scenes: ['夕阳', '旅行', '户外'], palette: '橙色、金黄', visual: '落日暖光' },
+        { id: 'animated-gradient', name: '动感渐变', color: 'linear-gradient(45deg, #ee7752, #e73c7e)', mood: '活力、年轻、流动', scenes: ['派对', '潮流', '旅行'], palette: '多彩渐变', visual: '动态色彩' },
+        { id: 'bokeh', name: '梦幻光影', color: '#e94560', mood: '浪漫、朦胧、夜色', scenes: ['夜景', '情侣', '节日'], palette: '深色、玫红', visual: '散景光斑' },
+        { id: 'starry', name: '星空流火', color: '#0b3d91', mood: '梦幻、辽阔、安静', scenes: ['星空', '夜景', '旅行'], palette: '深蓝、金色', visual: '星空沉浸感' }
       ];
 
-      // 线上切歌无声的根因：部分远程音乐 URL 已失效（404）。
-      // 为保证可用性，这里只使用同源静态资源，并把列表固定为 10 首（重复曲目也保证“有声”）。
+      // AI 根据情绪、能量和适用场景，从真实不同的内置音频中选择。
       const tracks = [
-        { src: 'assets/bgm.mp3', name: '✨ 经典: Beautiful in White' },
-        { src: 'assets/music/travel_upbeat.mp3', name: '☀️ 活力: Upbeat Travel' },
-        { src: 'assets/bgm_3.mp3', name: '🎻 轻奏: 旧梦回响' },
-
-        // 这些“曲目”是不同入口，但复用同一批可用音频文件，确保每一首都能播放。
-        { src: 'assets/bgm.mp3', name: '🌙 夜色: 白纱回忆 (循环)' },
-        { src: 'assets/bgm_3.mp3', name: '🌸 甜蜜: 轻奏旋律 (循环)' },
-        { src: 'assets/music/travel_upbeat.mp3', name: '🚗 远行: 旅行节拍 (循环)' },
-        { src: 'assets/bgm.mp3', name: '💍 婚礼: 经典旋律 (循环)' },
-        { src: 'assets/bgm_3.mp3', name: '👶 宝宝: 温柔轻奏 (循环)' },
-        { src: 'assets/music/travel_upbeat.mp3', name: '🎉 派对: 活力节奏 (循环)' },
-        { src: 'assets/bgm.mp3', name: '🌟 星光: 经典回响 (循环)' }
+        { src: 'assets/bgm.mp3', name: '💍 白纱回忆', mood: '浪漫、庄重、温柔', energy: '低', scenes: ['婚礼', '情侣', '周年纪念'] },
+        { src: 'assets/bgm_2.mp3', name: '🌙 月光来信', mood: '安静、怀念、细腻', energy: '低', scenes: ['家庭回忆', '夜景', '人物特写'] },
+        { src: 'assets/bgm_3.mp3', name: '🎻 旧梦回响', mood: '温暖、舒缓、治愈', energy: '低', scenes: ['日常', '成长记录', '家庭'] },
+        { src: 'assets/music/lullaby.mp3', name: '🍼 摇篮微光', mood: '柔软、安心、纯真', energy: '极低', scenes: ['宝宝', '儿童', '亲子'] },
+        { src: 'assets/music/cinematic.mp3', name: '🎞️ 银幕序章', mood: '宏大、叙事、深情', energy: '中', scenes: ['旅行故事', '纪实', '庆典'] },
+        { src: 'assets/music/travel_upbeat.mp3', name: '☀️ 向晴天出发', mood: '明快、自由、快乐', energy: '高', scenes: ['旅行', '朋友聚会', '户外'] }
       ];
 
       // 多场景主题/BGM 依赖注入配置中心（可被上层通过 window.V23_ALBUM_PRESETS 覆写）
@@ -875,9 +962,8 @@
         baby: {
           id: 'baby',
           sceneLabel: '宝宝相册',
-          // 为避免“默认体验倒退”，保持原有经典棕色主题 + 温柔宝宝配乐
-          defaultTheme: 'classic',
-          defaultTrack: 'assets/bgm_3.mp3'
+          defaultTheme: 'baby-blue',
+          defaultTrack: 'assets/music/lullaby.mp3'
         },
         wedding: {
           id: 'wedding',
@@ -1262,6 +1348,7 @@
           const isActive = currentTrack === t.src;
           const isRecommended = !!recommendedTrackSrc && recommendedTrackSrc === t.src;
           div.className = `music-item ${isActive ? 'active' : ''} ${isRecommended ? 'recommended' : ''}`.trim();
+          div.title = `${t.mood || ''}${t.energy ? ` · 能量${t.energy}` : ''}`;
           let tail = '';
           if (isActive) tail = '✅';
           else if (isRecommended) tail = '⭐ 推荐';
@@ -1968,7 +2055,7 @@
       
       function getLocalRecommendation(albumType) {
         if (albumType === 'baby') {
-          return { themeId: 'classic', trackSrc: 'assets/bgm_3.mp3' };
+          return { themeId: 'baby-blue', trackSrc: 'assets/music/lullaby.mp3' };
         }
         if (albumType === 'wedding') {
           return { themeId: 'romantic-wedding', trackSrc: 'assets/bgm.mp3' };
@@ -2020,8 +2107,21 @@
             ? photos.map(p => ({ src: String(p.src || ''), caption: p.caption ? String(p.caption) : '' }))
             : [],
           // 提供可选候选集，由外部 LLM 决定具体组合
-          themes: themes.map(t => ({ id: t.id, name: t.name })),
-          tracks: tracks.map(t => ({ src: t.src, name: t.name }))
+          themes: themes.map(t => ({
+            id: t.id,
+            name: t.name,
+            mood: t.mood,
+            scenes: t.scenes,
+            palette: t.palette,
+            visual: t.visual
+          })),
+          tracks: tracks.map(t => ({
+            src: t.src,
+            name: t.name,
+            mood: t.mood,
+            energy: t.energy,
+            scenes: t.scenes
+          }))
         };
 
         try {
