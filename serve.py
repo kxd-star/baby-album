@@ -695,8 +695,6 @@ async def serve_upload(
     expires: int | None = None,
     signature: str | None = None,
 ):
-    if user_id != request.state.user_id and not verify_asset_signature(user_id, filename, expires, signature):
-        return HTMLResponse("Not Found", status_code=404)
     if "/" in filename or "\\" in filename or len(user_id) != 32:
         return HTMLResponse("Not Found", status_code=404)
 
