@@ -63,7 +63,7 @@ SESSION_SECRET = os.environ.get("SESSION_SECRET", "dev-only-change-me").encode("
 SESSION_COOKIE_NAME = os.environ.get("SESSION_COOKIE_NAME", "baby_album_session")
 SESSION_MAX_AGE = int(os.environ.get("SESSION_MAX_AGE", str(60 * 60 * 24 * 365)))
 SIGNED_ASSET_TTL = int(os.environ.get("SIGNED_ASSET_TTL", "600"))
-SESSION_COOKIE_SECURE = os.environ.get("SESSION_COOKIE_SECURE", "true").lower() == "true"
+SESSION_COOKIE_SECURE = os.environ.get("SESSION_COOKIE_SECURE", "false").lower() == "true"
 SESSION_COOKIE_SAMESITE = os.environ.get("SESSION_COOKIE_SAMESITE", "lax").lower()
 S3_PRESIGNED_READ = os.environ.get("S3_PRESIGNED_READ", "true").lower() == "true"
 
