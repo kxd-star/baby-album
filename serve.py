@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import hashlib
 import hmac
 import json
@@ -728,13 +729,44 @@ async def serve_upload(
     return FileResponse(file_path, headers={"Cache-Control": "private, no-store"})
 
 
+def _photo_to_data_uri(url: str) -> str | None:
+    """Read a photo from local disk by its URL and return a base64 data URI.
+    This guarantees MiniMax can access the image regardless of network routing."""
+    from urllib.parse import urlparse
+    parsed = urlparse(url)
+    path = parsed.path
+    if not path.startswith("/uploads/"):
+        return None
+    parts = path.strip("/").split("/")
+    if len(parts) != 3 or parts[0] != "uploads":
+        return None
+    _, user_id, filename = parts
+    if "/" in filename or "\\" in filename:
+        return None
+    try:
+        local_path = (UPLOAD_DIR / user_id / filename).resolve()
+        uploads_resolved = UPLOAD_DIR.resolve()
+        if uploads_resolved not in local_path.parents:
+            return None
+        if not local_path.exists() or not local_path.is_file():
+            return None
+        data = local_path.read_bytes()
+        ct = sniff_image_content_type(data) or "image/jpeg"
+        b64 = base64.b64encode(data).decode("utf-8")
+        return f"data:{ct};base64,{b64}"
+    except Exception as e:
+        print(f"_photo_to_data_uri failed: {repr(e)}")
+        return None
+
+
 async def generate_caption_for_photo(request: Request, photo: CaptionPhoto, album_type: str | None) -> str:
-    image_url = normalize_same_origin_asset_url(request, photo.url)
-    if not image_url:
+    # Resolve to a local path and read image for base64 inline
+    image_b64 = _photo_to_data_uri(photo.url)
+    if not image_b64:
         return fallback_caption(album_type)
 
     prompt = (
-        f"[image:{image_url}]\n"
+        f"[image:{image_b64}]\n"
         "你是一位相册配文师。先理解这张照片：\n"
         "- 场景类型（室内/户外/城市/自然/餐饮/其他）\n"
         "- 人物情况（人数、年龄段、互动关系）\n"
@@ -816,8 +848,8 @@ async def generate_storyline(request: Request, data: StorylineRequest):
 {{"chapters":[{{"title":"初见","description":"宝宝初来人世的美好瞬间","photo_ids":["p3","p1","p5"]}}]}}
 photo_ids 必须只使用输入中出现过的 id，且每张照片必须且只能出现一次。"""
 
-    # Include up to 3 representative photo thumbnails for visual context
-    photo_urls = []
+    # Include up to 3 representative photo thumbnails for visual context (base64 inline)
+    photo_data_uris = []
     if photos:
         indices = [0]
         if len(photos) >= 3:
@@ -826,16 +858,16 @@ photo_ids 必须只使用输入中出现过的 id，且每张照片必须且只�
         for idx in indices:
             url = getattr(photos[idx], 'url', None) or getattr(photos[idx], 'src', None)
             if url:
-                norm = normalize_same_origin_asset_url(request, str(url))
-                if norm:
-                    photo_urls.append(norm)
+                b64 = _photo_to_data_uri(str(url))
+                if b64:
+                    photo_data_uris.append(b64)
 
     try:
         text = prompt
-        if photo_urls:
-            img_tags = "".join(f"[image:{url}]" for url in photo_urls)
+        if photo_data_uris:
+            img_tags = "".join(f"[image:{b64}]" for b64 in photo_data_uris)
             text = img_tags + "\n" + prompt
-        content = await call_llm([{"role": "user", "content": text}], vision=bool(photo_urls))
+        content = await call_llm([{"role": "user", "content": text}], vision=bool(photo_data_uris))
         if content:
             result = safe_json_from_text(content)
             chapters = normalize_storyline_chapters(
@@ -859,12 +891,12 @@ async def recommend(request: Request, data: RecommendRequest):
     captions = data.captions[:30]
     photos = data.photos[:30]
 
-    photo_urls = []
+    photo_data_uris = []
     for photo in photos[:3]:
         raw_url = photo.get("src") if isinstance(photo, dict) else photo
-        image_url = normalize_same_origin_asset_url(request, str(raw_url or ""))
-        if image_url:
-            photo_urls.append(image_url)
+        b64 = _photo_to_data_uri(str(raw_url or ""))
+        if b64:
+            photo_data_uris.append(b64)
 
     prompt = f"""你是一个高级的相册主题搭配师。
 当前相册类型: {album_type}
@@ -890,8 +922,8 @@ async def recommend(request: Request, data: RecommendRequest):
 
     content: str | None = None
     try:
-        if photo_urls:
-            img_tags = "".join(f"[image:{url}]" for url in photo_urls)
+        if photo_data_uris:
+            img_tags = "".join(f"[image:{b64}]" for b64 in photo_data_uris)
             content = await call_llm([{"role": "user", "content": img_tags + "\n" + prompt}], vision=True)
         if not content:
             content = await call_llm([{"role": "user", "content": prompt}], vision=False)
