@@ -108,6 +108,143 @@
       --font-display: 'ZCOOL KuaiLe', cursive;
       --border-radius: 20px;
     }
+
+    /* ── Premium Baby Themes ── */
+
+    /* 🌙 月光摇篮 · 静谧梦幻高定风 */
+    body.theme-moonlight-baby {
+      --bg: linear-gradient(145deg, #f5efe6 0%, #e8e0d8 40%, #c9bdb0 100%);
+      --cover-bg: #2c3e50;
+      --page-bg: #fcf9f5;
+      --text: #3d2c1f;
+      --shadow: rgba(44, 62, 80, 0.16);
+      --accent: #c9a96e;
+      --font-display: 'Noto Serif SC', serif;
+      --border-radius: 4px;
+    }
+    body.theme-moonlight-baby::before {
+      content: ''; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background-image:
+        radial-gradient(1px 1px at 10% 20%, rgba(201, 169, 110, 0.25) 0%, transparent 100%),
+        radial-gradient(1px 1px at 30% 65%, rgba(201, 169, 110, 0.2) 0%, transparent 100%),
+        radial-gradient(1.5px 1.5px at 55% 15%, rgba(201, 169, 110, 0.3) 0%, transparent 100%),
+        radial-gradient(1px 1px at 70% 50%, rgba(201, 169, 110, 0.2) 0%, transparent 100%),
+        radial-gradient(1.5px 1.5px at 85% 25%, rgba(201, 169, 110, 0.25) 0%, transparent 100%),
+        radial-gradient(1px 1px at 15% 80%, rgba(201, 169, 110, 0.2) 0%, transparent 100%),
+        radial-gradient(1px 1px at 45% 40%, rgba(201, 169, 110, 0.15) 0%, transparent 100%),
+        radial-gradient(1.5px 1.5px at 60% 75%, rgba(201, 169, 110, 0.2) 0%, transparent 100%);
+      z-index: -1;
+      pointer-events: none;
+    }
+    body.theme-moonlight-baby .page-side {
+      border: 1px solid rgba(201, 169, 110, 0.25);
+      box-shadow: 0 4px 20px rgba(44, 62, 80, 0.08), inset 0 0 40px rgba(201, 169, 110, 0.03);
+    }
+    body.theme-moonlight-baby .photo-container img {
+      border: 1px solid rgba(201, 169, 110, 0.3);
+      border-radius: 2px;
+      box-shadow: 0 8px 24px rgba(44, 62, 80, 0.1);
+    }
+    body.theme-moonlight-baby .cover-side {
+      background: linear-gradient(145deg, #2c3e50 0%, #1a252f 100%);
+      position: relative;
+      overflow: hidden;
+    }
+    body.theme-moonlight-baby .cover-side::before {
+      content: ''; position: absolute; top: -50%; left: -50%; width: 200%; height: 200%;
+      background: radial-gradient(ellipse at 30% 40%, rgba(201, 169, 110, 0.1) 0%, transparent 60%),
+                  radial-gradient(ellipse at 70% 60%, rgba(255, 255, 255, 0.05) 0%, transparent 40%);
+    }
+    body.theme-moonlight-baby .cover-side .cover-title {
+      color: #f5efe6;
+      text-shadow: 0 2px 20px rgba(201, 169, 110, 0.3);
+      letter-spacing: 0.15em;
+    }
+
+    /* 🧸 奶油羊绒 · 温暖柔软北欧风 */
+    body.theme-cream-baby {
+      --bg: #faf5f0;
+      --cover-bg: #c4956a;
+      --page-bg: #fefcfa;
+      --text: #4a3728;
+      --shadow: rgba(196, 149, 106, 0.18);
+      --accent: #c4956a;
+      --font-display: 'Noto Serif SC', serif;
+      --border-radius: 12px;
+    }
+    body.theme-cream-baby::before {
+      content: ''; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background-image: radial-gradient(circle at 20% 30%, rgba(196, 149, 106, 0.06) 0%, transparent 50%),
+                        radial-gradient(circle at 80% 70%, rgba(196, 149, 106, 0.04) 0%, transparent 50%);
+      z-index: -1;
+    }
+    body.theme-cream-baby .page-side {
+      background: rgba(255, 255, 255, 0.6);
+      backdrop-filter: blur(2px);
+      box-shadow: 0 2px 12px rgba(196, 149, 106, 0.1);
+      border-radius: 12px;
+    }
+    body.theme-cream-baby .photo-container {
+      padding: 12px;
+      background: #fefcfa;
+      border-radius: 8px;
+    }
+    body.theme-cream-baby .photo-container img {
+      border-radius: 6px;
+      box-shadow: 0 4px 16px rgba(196, 149, 106, 0.12);
+    }
+    body.theme-cream-baby .cover-side {
+      background: linear-gradient(145deg, #c4956a 0%, #b88356 100%);
+    }
+    body.theme-cream-baby .cover-side .cover-title {
+      color: #fefcfa;
+      font-weight: 400;
+      letter-spacing: 0.1em;
+    }
+
+    /* 🌿 森林初生 · 自然高级森系风 */
+    body.theme-forest-baby {
+      --bg: #e8ede6;
+      --cover-bg: #5b7a5e;
+      --page-bg: #f7f9f5;
+      --text: #2c3a2d;
+      --shadow: rgba(91, 122, 94, 0.18);
+      --accent: #b48c6c;
+      --font-display: 'Noto Serif SC', serif;
+      --border-radius: 6px;
+    }
+    body.theme-forest-baby::before {
+      content: ''; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background-image: radial-gradient(circle at 50% 0%, rgba(91, 122, 94, 0.06) 0%, transparent 60%);
+      z-index: -1;
+    }
+    body.theme-forest-baby .page-side {
+      border-left: 3px solid rgba(91, 122, 94, 0.3);
+      border-radius: 0 8px 8px 0;
+      padding-left: 12px;
+    }
+    body.theme-forest-baby .photo-container {
+      background: #f7f9f5;
+      border-bottom: 2px solid rgba(91, 122, 94, 0.15);
+    }
+    body.theme-forest-baby .photo-container img {
+      box-shadow: 0 4px 16px rgba(91, 122, 94, 0.1);
+    }
+    body.theme-forest-baby .cover-side {
+      background: linear-gradient(145deg, #5b7a5e 0%, #4a634c 100%);
+      position: relative;
+      overflow: hidden;
+    }
+    body.theme-forest-baby .cover-side::before {
+      content: ''; position: absolute; top: -50%; left: -50%; width: 200%; height: 200%;
+      background: radial-gradient(ellipse at 50% 30%, rgba(180, 140, 108, 0.1) 0%, transparent 50%);
+    }
+    body.theme-forest-baby .cover-side .cover-title {
+      color: #f7f9f5;
+      font-weight: 400;
+      letter-spacing: 0.12em;
+    }
+
     body.theme-dark-gold {
       --bg: linear-gradient(to bottom, #111, #222);
       --cover-bg: #d4af37;
@@ -928,6 +1065,9 @@
         { id: 'gallery', name: '🖼️ 当代画廊', color: 'linear-gradient(135deg, #2449a4, #ef8354)', mood: '清爽、艺术、理性', scenes: ['建筑', '艺术展', '产品与静物'], palette: '钴蓝、橙色、冷灰', visual: '画廊标签、现代网格' },
         { id: 'romantic-wedding', name: '🌸 绝美婚礼', color: 'linear-gradient(135deg, #fffcf5, #ffebf0)', mood: '浪漫、柔美、仪式感', scenes: ['婚礼', '情侣', '纪念日'], palette: '白色、粉色', visual: '婚礼高定、柔和光影' },
         { id: 'baby-blue', name: '🍼 纯真宝贝', color: 'linear-gradient(135deg, #e0f7fa, #80deea)', mood: '纯真、温柔、可爱', scenes: ['宝宝', '儿童', '亲子'], palette: '浅蓝、白色', visual: '柔软圆角、童趣' },
+        { id: 'moonlight-baby', name: '🌙 月光摇篮', color: 'linear-gradient(145deg, #f5efe6, #c9bdb0)', mood: '静谧、梦幻、高定', scenes: ['宝宝', '新生儿', '满月'], palette: '暖灰、金色', visual: '星光点缀、高级布纹' },
+        { id: 'cream-baby', name: '🧸 奶油羊绒', color: '#faf5f0', mood: '温暖、柔软、治愈', scenes: ['宝宝', '亲子', '日常'], palette: '奶油色、粉驼', visual: '绒面质感、圆角边框' },
+        { id: 'forest-baby', name: '🌿 森林初生', color: '#e8ede6', mood: '清新、自然、安宁', scenes: ['宝宝', '户外', '自然'], palette: '鼠尾草绿、陶土', visual: '森系边框、自然纹理' },
         { id: 'dark-gold', name: '👑 黑金岁月', color: 'linear-gradient(135deg, #111, #d4af37)', mood: '庄重、奢华、经典', scenes: ['宴会', '正式肖像', '周年'], palette: '黑色、金色', visual: '黑金礼册' },
         { id: 'mint', name: '🍃 清新薄荷', color: '#4db6ac', mood: '清新、干净、轻盈', scenes: ['日常', '户外', '美食'], palette: '薄荷绿、白色', visual: '清爽简洁' },
         { id: 'peach', name: '🍑 蜜桃乌龙', color: '#ffab91', mood: '温暖、甜蜜、松弛', scenes: ['日常', '情侣', '美食'], palette: '蜜桃粉、白色', visual: '温暖柔和' },
@@ -967,7 +1107,7 @@
         baby: {
           id: 'baby',
           sceneLabel: '宝宝相册',
-          defaultTheme: 'baby-blue',
+          defaultTheme: 'moonlight-baby',
           defaultTrack: 'assets/music/lullaby.mp3'
         },
         wedding: {
@@ -1033,25 +1173,25 @@
       const captionPools = {
         baby: [
           "初见你的第一眼，世界都亮了。",
-          "小小的手心，牵动着全家人的心。",
-          "看你可爱的模样，心都被融化了。",
-          "第一次翻身，全家人都为你鼓掌。",
-          "满月啦！愿你平安喜乐，岁岁年年。",
-          "你是坠入凡间的小天使，带着满身星光。",
-          "愿你眼里有星辰，心中有良善。",
-          "小脚丫，大梦想，一步一个脚印去探索世界。",
-          "你是上天赐予我们最珍贵的礼物。",
-          "看你一天天长大，是这个世界上最幸福的事。",
-          "小小的脸庞，大大的好奇，这个世界真奇妙。",
-          "你是我们生命中的阳光，照亮了所有的角落。",
-          "愿你的童年充满欢笑，无忧无虑。",
-          "每一声啼哭都是成长的节奏，每一张笑脸都是爱的馈赠。",
-          "宝贝，愿你慢慢长大，被这世界温柔相待。",
-          "你的每一个小动作，都在诉说着生命的奇迹。",
-          "你是星辰大海，是我们永远的牵挂。",
-          "陪伴你成长的每一刻，都值得被永远铭记。",
-          "你是未来的希望，是绽放在我们心尖的花朵。",
-          "愿你此生尽兴，赤诚善良。"
+          "小小的手心，牵动着整个世界。",
+          "满月清辉，映照你初生的脸庞。",
+          "你是落入凡间的星辰，带着温柔的光。",
+          "第一次翻身，是你探索世界的第一步。",
+          "你一笑，所有花都开了。",
+          "岁月很长，你慢慢来。",
+          "小小的你，是大大的奇迹。",
+          "愿你眼里有星河，心中有旷野。",
+          "每一个梦都轻柔，每一夜都安眠。",
+          "你熟睡的样子，是世界最安静的角落。",
+          "你是我写过最温柔的诗。",
+          "光阴不语，默默记录你成长的痕迹。",
+          "小小的脚印，踩在心上，每一步都是欢喜。",
+          "被你需要，是这世间最柔软的羁绊。",
+          "你的到来，让平凡的日子熠熠生辉。",
+          "从你眼中，我看见了最初的纯真。",
+          "生命中最美的馈赠，是你的第一声啼哭。",
+          "愿你被世界温柔以待，亦能温柔待人。",
+          "时光会走远，但这些瞬间会留下来。"
         ],
         wedding: [
           "执子之手，与子偕老。",
@@ -1566,10 +1706,14 @@
       function storylineTemplates(type) {
         if (type === 'baby') {
           return [
-            { title: '初见', description: '宝宝初来人世的美好瞬间' },
-            { title: '成长', description: '记录一点点变化和新本领' },
-            { title: '日常', description: '日常陪伴里的温馨片段' },
-            { title: '珍藏', description: '值得反复回看的幸福时刻' }
+            { title: '初见', description: '与你的第一次相遇，世界从此不同' },
+            { title: '初醒', description: '每一个清晨，都是崭新的你' },
+            { title: '晨光', description: '阳光洒落，照亮你小小的脸庞' },
+            { title: '探索', description: '你好奇的眼睛，装得下整个宇宙' },
+            { title: '陪伴', description: '在一起的每一天，都是最好的时光' },
+            { title: '成长', description: '你慢慢长大，爱从未缺席' },
+            { title: '珍藏', description: '这些瞬间，是岁月赠予我们最珍贵的礼物' },
+            { title: '期许', description: '愿你一生温暖纯良，不舍爱与自由' }
           ];
         }
         if (type === 'wedding') {
@@ -2139,7 +2283,7 @@
       
       function getLocalRecommendation(albumType) {
         if (albumType === 'baby') {
-          return { themeId: 'baby-blue', trackSrc: 'assets/music/lullaby.mp3' };
+          return { themeId: 'moonlight-baby', trackSrc: 'assets/music/lullaby.mp3' };
         }
         if (albumType === 'wedding') {
           return { themeId: 'romantic-wedding', trackSrc: 'assets/bgm.mp3' };
