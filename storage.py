@@ -1,7 +1,7 @@
+import asyncio
 import os
 from pathlib import Path
 from typing import Optional
-from urllib.parse import urlencode
 
 
 class StorageBackend:
@@ -9,6 +9,10 @@ class StorageBackend:
 
     async def save(self, data: bytes, path: str, content_type: str = "") -> str:
         """Persist data and return the public-facing URL."""
+        raise NotImplementedError
+
+    async def delete(self, path: str) -> bool:
+        """Delete a stored object. Missing objects count as successfully deleted."""
         raise NotImplementedError
 
     def get_url(self, path: str) -> str:
@@ -33,9 +37,30 @@ class LocalStorage(StorageBackend):
 
     async def save(self, data: bytes, path: str, content_type: str = "") -> str:
         file_path = self.upload_dir / path
-        file_path.parent.mkdir(parents=True, exist_ok=True)
-        file_path.write_bytes(data)
+        await asyncio.to_thread(file_path.parent.mkdir, parents=True, exist_ok=True)
+        await asyncio.to_thread(file_path.write_bytes, data)
         return f"/uploads/{path}"
+
+    async def delete(self, path: str) -> bool:
+        file_path = (self.upload_dir / path).resolve()
+        upload_dir = self.upload_dir.resolve()
+        if upload_dir not in file_path.parents:
+            return False
+
+        def delete_file() -> bool:
+            try:
+                file_path.unlink(missing_ok=True)
+                parent = file_path.parent
+                if parent != upload_dir:
+                    try:
+                        parent.rmdir()
+                    except OSError:
+                        pass
+                return True
+            except OSError:
+                return False
+
+        return await asyncio.to_thread(delete_file)
 
     def get_url(self, path: str) -> str:
         return f"/uploads/{path}"
@@ -69,20 +94,23 @@ class S3Storage(StorageBackend):
         self.presigned_read = presigned_read
 
     async def save(self, data: bytes, path: str, content_type: str = "") -> str:
-        import asyncio
-
-        put_kwargs = {"Bucket": self.bucket, "Key": path, "Body": data}
+        key = self._object_key(path)
+        put_kwargs = {"Bucket": self.bucket, "Key": key, "Body": data}
         if content_type:
             put_kwargs["ContentType"] = content_type
-        loop = asyncio.get_running_loop()
-        await loop.run_in_executor(
-            None,
-            lambda: self.client.put_object(**put_kwargs),
-        )
-        if self.presigned_read:
-            # Return a key-based path; URL generation happens at read time
-            return self.get_url(path)
+        await asyncio.to_thread(self.client.put_object, **put_kwargs)
         return self.get_url(path)
+
+    async def delete(self, path: str) -> bool:
+        try:
+            await asyncio.to_thread(
+                self.client.delete_object,
+                Bucket=self.bucket,
+                Key=self._object_key(path),
+            )
+            return True
+        except Exception:
+            return False
 
     def get_url(self, path: str) -> str:
         return f"/uploads/{path}?storage=s3"
@@ -92,20 +120,31 @@ class S3Storage(StorageBackend):
         try:
             url = self.client.generate_presigned_url(
                 "get_object",
-                Params={"Bucket": self.bucket, "Key": path},
+                Params={"Bucket": self.bucket, "Key": self._object_key(path)},
                 ExpiresIn=ttl,
             )
             return url
         except Exception:
             return None
 
-    def read_object(self, path: str) -> Optional[bytes]:
+    async def read_object(self, path: str) -> Optional[bytes]:
         """Read object bytes directly from S3 (server-side proxy)."""
         try:
-            resp = self.client.get_object(Bucket=self.bucket, Key=path)
-            return resp["Body"].read()
+            resp = await asyncio.to_thread(
+                self.client.get_object,
+                Bucket=self.bucket,
+                Key=self._object_key(path),
+            )
+            return await asyncio.to_thread(resp["Body"].read)
         except Exception:
             return None
+
+    def _object_key(self, path: str) -> str:
+        clean_path = path.strip().lstrip("/")
+        prefix = self._key_prefix()
+        if not prefix or clean_path == prefix or clean_path.startswith(f"{prefix}/"):
+            return clean_path
+        return f"{prefix}/{clean_path}"
 
     def mode_name(self) -> str:
         return "s3"

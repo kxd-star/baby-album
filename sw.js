@@ -4,7 +4,7 @@
  * - Others: stale-while-revalidate
  */
 
-const VERSION = 'v23-2026-06-11-cloud-ready';
+const VERSION = 'v23-2026-06-12-upload-reliability';
 const SHELL_CACHE = `v23-shell-${VERSION}`;
 const RUNTIME_CACHE = `v23-runtime-${VERSION}`;
 
@@ -53,12 +53,16 @@ self.addEventListener('activate', (event) => {
 async function cacheFirst(request) {
   const cached = await caches.match(request);
   if (cached) return cached;
-  const res = await fetch(request);
-  if (res && res.ok) {
-    const cache = await caches.open(RUNTIME_CACHE);
-    cache.put(request, res.clone());
+  try {
+    const res = await fetch(request);
+    if (res && res.ok) {
+      const cache = await caches.open(RUNTIME_CACHE);
+      cache.put(request, res.clone());
+    }
+    return res;
+  } catch (_) {
+    return new Response('Offline', { status: 503, statusText: 'Offline' });
   }
-  return res;
 }
 
 async function networkFirst(request) {
@@ -72,7 +76,7 @@ async function networkFirst(request) {
   } catch (_) {
     const cached = await caches.match(request);
     if (cached) return cached;
-    throw _;
+    return new Response('Offline', { status: 503, statusText: 'Offline' });
   }
 }
 
@@ -88,7 +92,7 @@ async function staleWhileRevalidate(request) {
     })
     .catch(() => null);
 
-  return cached || (await fetchPromise);
+  return cached || (await fetchPromise) || new Response('Offline', { status: 503, statusText: 'Offline' });
 }
 
 self.addEventListener('fetch', (event) => {

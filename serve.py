@@ -34,9 +34,13 @@ def _s() -> Any:
 app = FastAPI()
 ROOT_DIR = Path(__file__).resolve().parent
 UPLOAD_DIR = ROOT_DIR / "uploads"
-MAX_UPLOAD_BYTES = int(os.environ.get("MAX_UPLOAD_BYTES", str(8 * 1024 * 1024)))
+MAX_UPLOAD_BYTES = int(os.environ.get("MAX_UPLOAD_BYTES", str(20 * 1024 * 1024)))
 MAX_UPLOAD_FILES = int(os.environ.get("MAX_UPLOAD_FILES", "30"))
-MAX_REQUEST_BODY_BYTES = int(os.environ.get("MAX_REQUEST_BODY_BYTES", str(32 * 1024 * 1024)))
+MAX_UPLOAD_BATCH_FILES = int(os.environ.get("MAX_UPLOAD_BATCH_FILES", "3"))
+MAX_REQUEST_BODY_BYTES = int(os.environ.get(
+    "MAX_REQUEST_BODY_BYTES",
+    str(MAX_UPLOAD_BYTES * MAX_UPLOAD_BATCH_FILES + 4 * 1024 * 1024),
+))
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
 CAPTION_CONCURRENCY = int(os.environ.get("CAPTION_CONCURRENCY", "4"))
 APP_ENV = os.environ.get("APP_ENV", "development").strip().lower()
@@ -117,6 +121,10 @@ class RecommendRequest(BaseModel):
     photos: list[dict[str, Any]] = Field(default_factory=list, max_length=30)
     themes: list[dict[str, Any]] = Field(default_factory=list, max_length=50)
     tracks: list[dict[str, Any]] = Field(default_factory=list, max_length=50)
+
+
+class DeleteUploadsRequest(BaseModel):
+    urls: list[str] = Field(default_factory=list, max_length=30)
 
 
 def sign_value(value: str) -> str:
@@ -286,6 +294,23 @@ async def persist_upload(request: Request, filename: str, data: bytes, content_t
     path = f"{user_id}/{filename}"
     await _s().save(data, path, content_type)
     return make_public_url(request, f"/uploads/{user_id}/{filename}")
+
+
+def current_user_upload_path(request: Request, raw_url: str) -> str | None:
+    parsed = urlparse(str(raw_url or "").strip())
+    path = parsed.path if parsed.scheme in ("http", "https") else str(raw_url or "")
+    parts = path.strip("/").split("/")
+    if len(parts) != 3 or parts[0] != "uploads":
+        return None
+    _, user_id, filename = parts
+    if user_id != request.state.user_id or "/" in filename or "\\" in filename:
+        return None
+    return f"{user_id}/{filename}"
+
+
+async def delete_stored_paths(paths: list[str]) -> None:
+    if paths:
+        await asyncio.gather(*(_s().delete(path) for path in paths), return_exceptions=True)
 
 
 def safe_json_from_text(content: str) -> dict[str, Any]:
@@ -472,35 +497,54 @@ def uploaded_filename_for(file: UploadFile, content_type: str | None = None) -> 
 async def upload_photos(request: Request, files: list[UploadFile] = File(...)):
     if not files:
         raise HTTPException(status_code=400, detail="No files uploaded")
-    if len(files) > MAX_UPLOAD_FILES:
-        raise HTTPException(status_code=400, detail=f"Upload at most {MAX_UPLOAD_FILES} images")
+    if len(files) > MAX_UPLOAD_BATCH_FILES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Upload at most {MAX_UPLOAD_BATCH_FILES} images per batch",
+        )
 
     photos = []
+    stored_paths: list[str] = []
 
-    for file in files:
-        data = await read_upload_bytes(file)
-        content_type = sniff_image_content_type(data)
-        if not content_type or content_type not in ALLOWED_IMAGE_TYPES:
-            raise HTTPException(status_code=400, detail="Unsupported or invalid image")
+    try:
+        for file in files:
+            data = await read_upload_bytes(file)
+            content_type = sniff_image_content_type(data)
+            if not content_type or content_type not in ALLOWED_IMAGE_TYPES:
+                raise HTTPException(status_code=400, detail="Unsupported or invalid image")
 
-        filename = uploaded_filename_for(file, content_type)
-        photo_id = Path(filename).stem
-
-        try:
+            filename = uploaded_filename_for(file, content_type)
+            photo_id = Path(filename).stem
             url = await persist_upload(request, filename, data, content_type)
-        except Exception as e:
-            print("Upload persistence failed:", repr(e))
-            raise HTTPException(status_code=503, detail="Upload storage is unavailable") from e
-
-        photos.append({
-            "id": photo_id,
-            "url": url,
-            "absoluteUrl": url,
-            "size": len(data),
-            "contentType": content_type,
-        })
+            stored_paths.append(f"{request.state.user_id}/{filename}")
+            photos.append({
+                "id": photo_id,
+                "url": url,
+                "absoluteUrl": url,
+                "size": len(data),
+                "contentType": content_type,
+            })
+    except HTTPException:
+        await delete_stored_paths(stored_paths)
+        raise
+    except Exception as e:
+        await delete_stored_paths(stored_paths)
+        print("Upload persistence failed:", repr(e))
+        raise HTTPException(status_code=503, detail="Upload storage is unavailable") from e
 
     return JSONResponse({"photos": photos})
+
+
+@app.post("/api/uploads/delete")
+async def delete_uploads(request: Request, data: DeleteUploadsRequest):
+    paths = [
+        path
+        for raw_url in data.urls
+        if (path := current_user_upload_path(request, raw_url))
+    ]
+    results = await asyncio.gather(*(_s().delete(path) for path in paths), return_exceptions=True)
+    deleted = sum(result is True for result in results)
+    return JSONResponse({"requested": len(data.urls), "matched": len(paths), "deleted": deleted})
 
 
 @app.get("/uploads/{user_id}/{filename}")
@@ -529,7 +573,7 @@ async def serve_upload(
                         headers={"Cache-Control": "private, no-store"},
                     )
 
-            data = storage.read_object(key)
+            data = await storage.read_object(key)
             if data is not None:
                 return Response(
                     content=data,
@@ -731,6 +775,10 @@ async def health():
         "visionConfigured": bool(get_ark_config(vision=True)),
         "textConfigured": bool(get_ark_config(vision=False)),
         "sessionSecretConfigured": SESSION_SECRET_CONFIGURED,
+        "maxUploadBytes": MAX_UPLOAD_BYTES,
+        "maxUploadFiles": MAX_UPLOAD_FILES,
+        "maxUploadBatchFiles": MAX_UPLOAD_BATCH_FILES,
+        "maxRequestBodyBytes": MAX_REQUEST_BODY_BYTES,
         "warnings": warnings,
     })
 

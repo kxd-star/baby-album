@@ -15,7 +15,7 @@
 ```bash
 git clone https://github.com/kxd-star/baby-album.git
 cd baby-album
-git switch codex/cloud-ready-ai-album
+git switch codex/cloud-upload-reliability
 cp .env.example .env
 ```
 
@@ -50,12 +50,14 @@ curl http://127.0.0.1:8080/api/health
 
 使用 Nginx 或 Caddy 将域名反向代理到 `127.0.0.1:8080`。上传文件会保存在宿主机的 `data/uploads/`，重新部署不会丢失。
 
+前端会把大图按每批 3 张上传：单张默认最大 20MB、相册最多 30 张、单次请求最大约 64MB。批次失败会停止流程，并清理之前已经上传的批次，避免留下无主文件。
+
 Nginx 需要允许较大的图片请求：
 
 ```nginx
 server {
     server_name album.example.com;
-    client_max_body_size 32m;
+    client_max_body_size 70m;
 
     location / {
         proxy_pass http://127.0.0.1:8080;
