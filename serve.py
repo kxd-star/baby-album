@@ -395,18 +395,48 @@ async def call_minimax_chat(messages: list[dict[str, Any]], vision: bool = False
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     payload = {"model": model, "messages": messages, "temperature": 0.3}
 
-    async with httpx.AsyncClient(timeout=30) as client:
+    timeout = 120 if vision else 60
+    async with httpx.AsyncClient(timeout=timeout) as client:
         resp = await client.post(url, headers=headers, json=payload)
         resp.raise_for_status()
         data = resp.json()
-        return data["choices"][0]["message"]["content"]
+        content: str = data["choices"][0]["message"]["content"]
+
+    # Strip MiniMax-M3's <think> reasoning blocks from the response
+    content = re.sub(r'<think>.*?</think>', '', content, flags=re.DOTALL).strip()
+    return content
 
 
 async def call_llm(messages: list[dict[str, Any]], vision: bool = False) -> str | None:
-    """Call LLM, preferring MiniMax, falling back to ARK."""
+    """Call LLM, preferring MiniMax, falling back to ARK.
+    If vision call fails, auto-retry with text-only."""
     if get_minimax_config(vision=vision):
-        return await call_minimax_chat(messages, vision=vision)
+        try:
+            return await call_minimax_chat(messages, vision=vision)
+        except Exception as e:
+            if vision:
+                print(f"MiniMax vision failed ({repr(e)}), trying text-only...")
+                # Drop image content, keep text only
+                text_only = [
+                    {"role": m["role"], "content": _extract_text_content(m.get("content", ""))}
+                    if isinstance(m.get("content"), list) else m
+                    for m in messages
+                ]
+                try:
+                    return await call_minimax_chat(text_only, vision=False)
+                except Exception as e2:
+                    print(f"MiniMax text also failed ({repr(e2)}), falling back to ARK...")
+            else:
+                print(f"MiniMax text failed ({repr(e)}), falling back to ARK...")
     return await call_ark_chat(messages, vision=vision)
+
+
+def _extract_text_content(content: list | str) -> str:
+    """Extract text parts from multimodal content array."""
+    if isinstance(content, str):
+        return content
+    texts = [item.get("text", "") for item in content if item.get("type") == "text"]
+    return "\n".join(texts)
 
 
 def fallback_caption(album_type: str | None = "default") -> str:
