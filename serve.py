@@ -275,9 +275,7 @@ def normalize_same_origin_asset_url(request: Request, raw_url: str) -> str | Non
     if len(parts) != 3 or parts[0] != "uploads":
         return None
     _, user_id, filename = parts
-    if user_id != request.state.user_id:
-        return None
-    return make_signed_asset_url(request, user_id, filename)
+    return make_public_url(request, path)
 
 
 def sniff_image_content_type(data: bytes) -> str | None:
@@ -736,6 +734,7 @@ async def generate_caption_for_photo(request: Request, photo: CaptionPhoto, albu
         return fallback_caption(album_type)
 
     prompt = (
+        f"[image:{image_url}]\n"
         "你是一位相册配文师。先理解这张照片：\n"
         "- 场景类型（室内/户外/城市/自然/餐饮/其他）\n"
         "- 人物情况（人数、年龄段、互动关系）\n"
@@ -747,10 +746,7 @@ async def generate_caption_for_photo(request: Request, photo: CaptionPhoto, albu
     )
     messages = [{
         "role": "user",
-        "content": [
-            {"type": "text", "text": prompt},
-            {"type": "image_url", "image_url": {"url": image_url}},
-        ],
+        "content": prompt,
     }]
 
     try:
@@ -835,12 +831,11 @@ photo_ids 必须只使用输入中出现过的 id，且每张照片必须且只�
                     photo_urls.append(norm)
 
     try:
-        messages = [{"role": "user", "content": [{"type": "text", "text": prompt}]}]
+        text = prompt
         if photo_urls:
-            messages[0]["content"].extend(
-                {"type": "image_url", "image_url": {"url": url}} for url in photo_urls
-            )
-        content = await call_llm(messages, vision=bool(photo_urls))
+            img_tags = "".join(f"[image:{url}]" for url in photo_urls)
+            text = img_tags + "\n" + prompt
+        content = await call_llm([{"role": "user", "content": text}], vision=bool(photo_urls))
         if content:
             result = safe_json_from_text(content)
             chapters = normalize_storyline_chapters(
@@ -896,12 +891,8 @@ async def recommend(request: Request, data: RecommendRequest):
     content: str | None = None
     try:
         if photo_urls:
-            messages = [{
-                "role": "user",
-                "content": [{"type": "text", "text": prompt}]
-                + [{"type": "image_url", "image_url": {"url": url}} for url in photo_urls],
-            }]
-            content = await call_llm(messages, vision=True)
+            img_tags = "".join(f"[image:{url}]" for url in photo_urls)
+            content = await call_llm([{"role": "user", "content": img_tags + "\n" + prompt}], vision=True)
         if not content:
             content = await call_llm([{"role": "user", "content": prompt}], vision=False)
         if not content:
