@@ -1720,15 +1720,23 @@
           return [
             { title: '相遇', description: '故事开始时的心动瞬间' },
             { title: '心动', description: '彼此靠近的浪漫片段' },
+            { title: '誓言', description: '把最好的一切留在这个瞬间' },
             { title: '相守', description: '携手同行的温柔承诺' },
-            { title: '定格', description: '把幸福留在这一刻' }
+            { title: '欢庆', description: '所有祝福在这一刻汇聚' },
+            { title: '陪伴', description: '从今往后，晨昏与四季' },
+            { title: '定格', description: '把幸福留在这一刻' },
+            { title: '期许', description: '愿余生皆是浪漫与温柔' }
           ];
         }
         return [
           { title: '开篇', description: '回忆从这些画面慢慢展开' },
           { title: '日常', description: '平凡生活里的温暖片段' },
           { title: '高光', description: '最值得停留的闪亮瞬间' },
-          { title: '珍藏', description: '留给以后反复回看的记忆' }
+          { title: '探索', description: '去发现，去经历，去热爱' },
+          { title: '陪伴', description: '在一起的每一天都是最好的时光' },
+          { title: '感动', description: '那些让人心头一软的瞬间' },
+          { title: '珍藏', description: '留给以后反复回看的记忆' },
+          { title: '期许', description: '带着爱与勇气，继续前行' }
         ];
       }
 
@@ -1736,10 +1744,9 @@
         const ids = photos.map(photo => String(photo.id || '')).filter(Boolean);
         if (ids.length === 0) return [];
 
-        let chapterCount = 1;
-        if (ids.length > 1 && ids.length <= 4) chapterCount = 2;
-        if (ids.length > 4 && ids.length <= 9) chapterCount = 3;
-        if (ids.length > 9) chapterCount = 4;
+        // Chapter count scales with photo count: ~3-5 photos per chapter
+        let chapterCount = Math.max(1, Math.min(12, Math.round(ids.length / 4)));
+        if (chapterCount === 0) chapterCount = 1;
 
         const templates = storylineTemplates(type);
         const chunkSize = Math.ceil(ids.length / chapterCount);
@@ -1793,10 +1800,10 @@
           }
         }
 
-        if (normalized.length > 4) {
-          const merged = normalized.slice(0, 4);
-          normalized.slice(4).forEach(chapter => {
-            merged[3].photo_ids.push(...chapter.photo_ids);
+        if (normalized.length > 12) {
+          const merged = normalized.slice(0, 12);
+          normalized.slice(12).forEach(chapter => {
+            merged[11].photo_ids.push(...chapter.photo_ids);
           });
           normalized = merged;
         }

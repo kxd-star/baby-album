@@ -549,9 +549,9 @@ def normalize_storyline_chapters(
         else:
             return fallback_storyline(photos, album_type)
 
-    if len(chapters) > 4:
-        merged = chapters[:4]
-        for extra in chapters[4:]:
+    if len(chapters) > 12:
+        merged = chapters[:12]
+        for extra in chapters[12:]:
             merged[-1]["photo_ids"].extend(extra["photo_ids"])
         chapters = merged
 
@@ -813,8 +813,9 @@ async def generate_storyline(request: Request, data: StorylineRequest):
 {json.dumps(compact_photos, ensure_ascii=False)}
 
 任务：
-1. 根据照片的视觉风格（色调、场景、氛围）和配文内容，把所有照片分成 2-4 个章节
-2. 每个章节起一个标题（2-4字）+ 一句话描述
+1. 根据照片的视觉风格（色调、场景、氛围）和配文内容，把所有照片分成合理的章节
+2. 每3-5张照片一个章节，照片越多章节越多
+3. 每个章节起一个标题（2-4字）+ 一句话描述
 3. 给每个章节内照片排序，形成叙事节奏
 
 请只返回合法 JSON，不要 Markdown，不要解释。格式如下：
