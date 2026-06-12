@@ -584,23 +584,9 @@
     .save-btn:hover { transform: translateY(-3px); box-shadow: 0 12px 25px rgba(46, 204, 113, 0.4); }
 
     /* History Panel */
-    #historyPanel {
-      position: fixed; top: 80px; right: 20px; width: 360px; max-height: 80vh; overflow-y: auto;
-      background: rgba(255, 255, 255, 0.96); backdrop-filter: blur(12px); border-radius: 20px;
-      box-shadow: 0 20px 50px rgba(0,0,0,0.2); padding: 24px; z-index: 9999;
-      transform: translateY(-30px) scale(0.95); opacity: 0; visibility: hidden;
-      transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-    }
-    #historyPanel.open { transform: translateY(0) scale(1); opacity: 1; visibility: visible; }
-    .history-item {
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 12px 10px; border-bottom: 1px solid rgba(0,0,0,0.05); transition: background 0.3s; border-radius: 8px;
-    }
-    .history-item:hover { background: rgba(0,0,0,0.03); }
-    .history-item-link { display: flex; align-items: center; flex: 1; text-decoration: none; color: #333; }
-    .history-info { display: flex; flex-direction: column; }
-    .history-title { font-weight: bold; font-size: 0.95rem; }
-    .history-desc { font-size: 0.75rem; color: #888; }
+    /* [Removed: 时光档案馆 panel] */
+
+    /* Generator Entry UI */
 
     /* Generator Entry UI */
     .upload-container {
@@ -955,38 +941,9 @@
     <div class="top-bar">
       <button class="icon-btn" id="homeBtn" title="返回上传">🏠</button>
       <button class="icon-btn" id="editorBtn" title="风格编辑器">🎨</button>
-      <button class="icon-btn" id="historyBtn" title="时光档案馆">🗂️</button>
       <button class="icon-btn music-btn" id="musicBtn" title="音乐开关">🎵</button>
       <button class="icon-btn" id="autoBtn" title="自动播放">▶️</button>
     </div>
-
-    <!-- History Panel -->
-    <div id="historyPanel">
-      <div class="editor-section">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-          <span style="font-weight:900;font-size:1.2rem;">🗂️ 时光档案馆</span>
-          <span id="closeHistory" style="cursor:pointer;">✖️</span>
-        </div>
-        <p style="font-size:0.8rem;color:#777;margin-bottom:20px;">记录您的每一次创作。您可以随时回溯或分享给亲友。</p>
-        <div class="history-list">
-          <div class="history-item">
-            <a href="?album=baby" class="history-item-link">
-              <div class="history-info">
-                <span class="history-title">👶 宝宝满月相册</span>
-                <span class="history-desc">温馨时光 · 20张精选</span>
-              </div>
-            </a>
-          </div>
-          <div class="history-item">
-            <a href="?album=wedding" class="history-item-link">
-              <div class="history-info">
-                <span class="history-title">💍 浪漫婚纱相册</span>
-                <span class="history-desc">Beautiful in White · 示例</span>
-              </div>
-            </a>
-          </div>
-        </div>
-      </div>
     </div>
 
     <!-- SaaS Editor Panel -->
@@ -1402,8 +1359,6 @@
       const musicList = document.getElementById('musicList');
       const saveBtn = document.getElementById('saveBtn');
       const saveModal = document.getElementById('saveModal');
-      const historyBtn = document.getElementById('historyBtn');
-      const historyPanel = document.getElementById('historyPanel');
       const musicBtn = document.getElementById('musicBtn');
       const book = document.getElementById('book');
       const storylineModal = document.getElementById('storylineModal');
@@ -2754,7 +2709,7 @@
         } 
       };
 
-      editorBtn.onclick = (e) => { e.stopPropagation(); editorPanel.classList.toggle('open'); historyPanel.classList.remove('open'); };
+      editorBtn.onclick = (e) => { e.stopPropagation(); editorPanel.classList.toggle('open');};
       document.getElementById('homeBtn').onclick = () => goHome();
 
       function goHome() {
@@ -2762,7 +2717,7 @@
         albumFooter.classList.add('hidden');
         uploadContainer.classList.remove('hidden');
         editorPanel.classList.remove('open');
-        historyPanel.classList.remove('open');
+        
         safeResetAudio();
         isPlaying = false;
         currentPage = 0;
@@ -2776,9 +2731,7 @@
         albumType = 'default';
       }
 
-      historyBtn.onclick = (e) => { e.stopPropagation(); historyPanel.classList.toggle('open'); editorPanel.classList.remove('open'); };
       
-      document.getElementById('closeHistory').onclick = () => historyPanel.classList.remove('open');
 
       saveBtn.onclick = () => {
         saveSettings();
