@@ -4,6 +4,7 @@ import hmac
 import json
 import mimetypes
 import os
+import re
 import time
 import uuid
 from pathlib import Path
@@ -12,7 +13,7 @@ from urllib.parse import urlencode, urlparse
 
 import httpx
 import uvicorn
-from fastapi import FastAPI, File, HTTPException, Request, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response
 from pydantic import BaseModel, Field
@@ -22,6 +23,7 @@ from storage import get_storage
 
 # Global storage backend (lazy-initialized via get_storage())
 _storage: Any | None = None
+_upload_locks: dict[str, asyncio.Lock] = {}
 
 
 def _s() -> Any:
@@ -125,6 +127,7 @@ class RecommendRequest(BaseModel):
 
 class DeleteUploadsRequest(BaseModel):
     urls: list[str] = Field(default_factory=list, max_length=30)
+    ids: list[str] = Field(default_factory=list, max_length=30)
 
 
 def sign_value(value: str) -> str:
@@ -481,7 +484,18 @@ def normalize_storyline_chapters(
     return chapters
 
 
-def uploaded_filename_for(file: UploadFile, content_type: str | None = None) -> str:
+def valid_photo_id(value: str | None) -> str | None:
+    value = str(value or "").strip()
+    if re.fullmatch(r"[a-zA-Z0-9_-]{8,80}", value):
+        return value
+    return None
+
+
+def uploaded_filename_for(
+    file: UploadFile,
+    content_type: str | None = None,
+    photo_id: str | None = None,
+) -> str:
     content_type = (content_type or file.content_type or "").lower()
     guessed_ext = mimetypes.guess_extension(content_type) or ""
     original_ext = Path(file.filename or "").suffix.lower()
@@ -490,11 +504,15 @@ def uploaded_filename_for(file: UploadFile, content_type: str | None = None) -> 
         ext = ".jpg"
     if ext not in {".jpg", ".jpeg", ".png", ".webp", ".gif"}:
         ext = ".jpg"
-    return f"{uuid.uuid4().hex}{ext}"
+    return f"{valid_photo_id(photo_id) or uuid.uuid4().hex}{ext}"
 
 
 @app.post("/api/upload")
-async def upload_photos(request: Request, files: list[UploadFile] = File(...)):
+async def upload_photos(
+    request: Request,
+    files: list[UploadFile] = File(...),
+    photo_ids: list[str] = Form(default=[]),
+):
     if not files:
         raise HTTPException(status_code=400, detail="No files uploaded")
     if len(files) > MAX_UPLOAD_BATCH_FILES:
@@ -502,49 +520,81 @@ async def upload_photos(request: Request, files: list[UploadFile] = File(...)):
             status_code=400,
             detail=f"Upload at most {MAX_UPLOAD_BATCH_FILES} images per batch",
         )
+    if photo_ids and (
+        len(photo_ids) != len(files)
+        or any(valid_photo_id(photo_id) is None for photo_id in photo_ids)
+        or len(set(photo_ids)) != len(photo_ids)
+    ):
+        raise HTTPException(status_code=400, detail="Invalid photo identifiers")
 
     photos = []
     stored_paths: list[str] = []
+    upload_lock = _upload_locks.setdefault(request.state.user_id, asyncio.Lock())
 
-    try:
-        for file in files:
-            data = await read_upload_bytes(file)
-            content_type = sniff_image_content_type(data)
-            if not content_type or content_type not in ALLOWED_IMAGE_TYPES:
-                raise HTTPException(status_code=400, detail="Unsupported or invalid image")
+    async with upload_lock:
+        try:
+            existing_count = await _s().count(request.state.user_id, MAX_UPLOAD_FILES + 1)
+        except Exception as e:
+            print("Upload quota check failed:", repr(e))
+            raise HTTPException(status_code=503, detail="Upload storage is unavailable") from e
+        if existing_count + len(files) > MAX_UPLOAD_FILES:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Your cloud album can store at most {MAX_UPLOAD_FILES} photos",
+            )
 
-            filename = uploaded_filename_for(file, content_type)
-            photo_id = Path(filename).stem
-            url = await persist_upload(request, filename, data, content_type)
-            stored_paths.append(f"{request.state.user_id}/{filename}")
-            photos.append({
-                "id": photo_id,
-                "url": url,
-                "absoluteUrl": url,
-                "size": len(data),
-                "contentType": content_type,
-            })
-    except HTTPException:
-        await delete_stored_paths(stored_paths)
-        raise
-    except Exception as e:
-        await delete_stored_paths(stored_paths)
-        print("Upload persistence failed:", repr(e))
-        raise HTTPException(status_code=503, detail="Upload storage is unavailable") from e
+        try:
+            for index, file in enumerate(files):
+                data = await read_upload_bytes(file)
+                content_type = sniff_image_content_type(data)
+                if not content_type or content_type not in ALLOWED_IMAGE_TYPES:
+                    raise HTTPException(status_code=400, detail="Unsupported or invalid image")
+
+                requested_id = photo_ids[index] if photo_ids else None
+                filename = uploaded_filename_for(file, content_type, requested_id)
+                photo_id = Path(filename).stem
+                stored_path = f"{request.state.user_id}/{filename}"
+                stored_paths.append(stored_path)
+                url = await persist_upload(request, filename, data, content_type)
+                photos.append({
+                    "id": photo_id,
+                    "url": url,
+                    "absoluteUrl": url,
+                    "size": len(data),
+                    "contentType": content_type,
+                })
+        except HTTPException:
+            await delete_stored_paths(stored_paths)
+            raise
+        except Exception as e:
+            await delete_stored_paths(stored_paths)
+            print("Upload persistence failed:", repr(e))
+            raise HTTPException(status_code=503, detail="Upload storage is unavailable") from e
 
     return JSONResponse({"photos": photos})
 
 
 @app.post("/api/uploads/delete")
 async def delete_uploads(request: Request, data: DeleteUploadsRequest):
-    paths = [
+    url_paths = [
         path
         for raw_url in data.urls
         if (path := current_user_upload_path(request, raw_url))
     ]
+    id_paths = [
+        f"{request.state.user_id}/{photo_id}{extension}"
+        for raw_id in data.ids
+        if (photo_id := valid_photo_id(raw_id))
+        for extension in (".jpg", ".jpeg", ".png", ".webp", ".gif")
+    ]
+    paths = list(dict.fromkeys(url_paths + id_paths))
     results = await asyncio.gather(*(_s().delete(path) for path in paths), return_exceptions=True)
     deleted = sum(result is True for result in results)
-    return JSONResponse({"requested": len(data.urls), "matched": len(paths), "deleted": deleted})
+    return JSONResponse({
+        "requested": len(data.urls) + len(data.ids),
+        "matched": len(paths),
+        "deleted": deleted,
+    })
 
 
 @app.get("/uploads/{user_id}/{filename}")

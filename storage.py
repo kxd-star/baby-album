@@ -15,6 +15,10 @@ class StorageBackend:
         """Delete a stored object. Missing objects count as successfully deleted."""
         raise NotImplementedError
 
+    async def count(self, prefix: str, limit: int | None = None) -> int:
+        """Count stored objects below a prefix, stopping once limit is reached."""
+        raise NotImplementedError
+
     def get_url(self, path: str) -> str:
         """Return a URL for the given storage path (may be signed)."""
         raise NotImplementedError
@@ -61,6 +65,25 @@ class LocalStorage(StorageBackend):
                 return False
 
         return await asyncio.to_thread(delete_file)
+
+    async def count(self, prefix: str, limit: int | None = None) -> int:
+        directory = (self.upload_dir / prefix).resolve()
+        upload_dir = self.upload_dir.resolve()
+        if directory != upload_dir and upload_dir not in directory.parents:
+            return 0
+
+        def count_files() -> int:
+            if not directory.exists():
+                return 0
+            count = 0
+            for path in directory.rglob("*"):
+                if path.is_file():
+                    count += 1
+                    if limit is not None and count >= limit:
+                        break
+            return count
+
+        return await asyncio.to_thread(count_files)
 
     def get_url(self, path: str) -> str:
         return f"/uploads/{path}"
@@ -111,6 +134,32 @@ class S3Storage(StorageBackend):
             return True
         except Exception:
             return False
+
+    async def count(self, prefix: str, limit: int | None = None) -> int:
+        object_prefix = self._object_key(prefix).rstrip("/") + "/"
+
+        def count_objects() -> int:
+            count = 0
+            continuation_token: str | None = None
+            while True:
+                kwargs = {
+                    "Bucket": self.bucket,
+                    "Prefix": object_prefix,
+                    "MaxKeys": min(1000, max(1, (limit or 1000) - count)),
+                }
+                if continuation_token:
+                    kwargs["ContinuationToken"] = continuation_token
+                response = self.client.list_objects_v2(**kwargs)
+                count += len(response.get("Contents", []))
+                if limit is not None and count >= limit:
+                    return count
+                if not response.get("IsTruncated"):
+                    return count
+                continuation_token = response.get("NextContinuationToken")
+                if not continuation_token:
+                    return count
+
+        return await asyncio.to_thread(count_objects)
 
     def get_url(self, path: str) -> str:
         return f"/uploads/{path}?storage=s3"

@@ -28,6 +28,13 @@ class FakeS3Client:
         self.calls.append(("get", kwargs))
         return {"Body": FakeBody()}
 
+    def list_objects_v2(self, **kwargs):
+        self.calls.append(("list", kwargs))
+        return {
+            "Contents": [{"Key": "uploads/user/photo.jpg"}],
+            "IsTruncated": False,
+        }
+
 
 class FakeBody:
     def read(self):
@@ -49,6 +56,15 @@ class LocalStorageTests(unittest.IsolatedAsyncioTestCase):
         with tempfile.TemporaryDirectory() as tmp:
             storage = LocalStorage(Path(tmp))
             self.assertFalse(await storage.delete("../outside.jpg"))
+
+    async def test_count_is_scoped_to_user_prefix(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            storage = LocalStorage(Path(tmp))
+            await storage.save(b"a", "user-a/one.jpg", "image/jpeg")
+            await storage.save(b"b", "user-a/two.jpg", "image/jpeg")
+            await storage.save(b"c", "user-b/one.jpg", "image/jpeg")
+            self.assertEqual(await storage.count("user-a"), 2)
+            self.assertEqual(await storage.count("user-a", limit=1), 1)
 
 
 class S3StorageTests(unittest.IsolatedAsyncioTestCase):
@@ -86,6 +102,10 @@ class S3StorageTests(unittest.IsolatedAsyncioTestCase):
             self.client.calls[-1][1]["Params"]["Key"],
             "uploads/user/photo.jpg",
         )
+
+    async def test_count_uses_scoped_s3_prefix(self):
+        self.assertEqual(await self.storage.count("user", limit=31), 1)
+        self.assertEqual(self.client.calls[-1][1]["Prefix"], "uploads/user/")
 
 
 if __name__ == "__main__":
