@@ -1,8 +1,0 @@
-.git
-.env
-.vercel
-__pycache__
-*.pyc
-*.log
-data
-uploads

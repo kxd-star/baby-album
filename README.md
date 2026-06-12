@@ -15,7 +15,7 @@
 ```bash
 git clone https://github.com/kxd-star/baby-album.git
 cd baby-album
-git switch codex/cloud-ready-ai-album
+git switch codex/cloud-upload-reliability
 cp .env.example .env
 ```
 
@@ -50,12 +50,14 @@ curl http://127.0.0.1:8080/api/health
 
 使用 Nginx 或 Caddy 将域名反向代理到 `127.0.0.1:8080`。上传文件会保存在宿主机的 `data/uploads/`，重新部署不会丢失。
 
+前端会把大图按每批 3 张上传：单张默认最大 20MB、每个用户会话最多存储 30 张、单次请求最大约 64MB。批次失败会停止流程，并清理之前已经上传的批次，避免留下无主文件。
+
 Nginx 需要允许较大的图片请求：
 
 ```nginx
 server {
     server_name album.example.com;
-    client_max_body_size 32m;
+    client_max_body_size 70m;
 
     location / {
         proxy_pass http://127.0.0.1:8080;
@@ -80,6 +82,8 @@ S3_PRESIGNED_READ=true
 ```
 
 对象存储保持私有。浏览器只能访问当前匿名用户自己的图片，视觉模型通过短期签名地址读取图片。用户通过服务端鉴权后会重定向到短期 S3 预签名地址，图片下载流量不会经过 FastAPI 中转。若对象存储不支持预签名 URL，可设置 `S3_PRESIGNED_READ=false` 恢复服务端中转。
+
+对象存储凭证需要具备列举、读取、写入和删除对象的权限。当前用户上传总量限制由应用实例内的锁保护；若未来运行多个后端实例，需要再接入数据库或分布式锁来保证并发配额严格一致。
 
 ## 用户数据隔离
 

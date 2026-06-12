@@ -1,12 +1,12 @@
-/* v23_album_rich Service Worker
+/* v24_album_rich Service Worker
  * - HTML: network-first (ensure updates)
  * - Images/Audio: cache-first (instant repeat visits)
  * - Others: stale-while-revalidate
  */
 
-const VERSION = 'v23-2026-06-11-cloud-ready';
-const SHELL_CACHE = `v23-shell-${VERSION}`;
-const RUNTIME_CACHE = `v23-runtime-${VERSION}`;
+const VERSION = 'v24-2026-06-12-cloud-stability';
+const SHELL_CACHE = `v24-shell-${VERSION}`;
+const RUNTIME_CACHE = `v24-runtime-${VERSION}`;
 
 const SHELL_ASSETS = [
   './',
@@ -39,7 +39,7 @@ self.addEventListener('activate', (event) => {
       const keys = await caches.keys();
       await Promise.all(
         keys.map((k) => {
-          if (k !== SHELL_CACHE && k !== RUNTIME_CACHE && k.startsWith('v23-')) {
+          if (k !== SHELL_CACHE && k !== RUNTIME_CACHE && (k.startsWith('v23-') || k.startsWith('v24-'))) {
             return caches.delete(k);
           }
           return Promise.resolve();
@@ -50,45 +50,80 @@ self.addEventListener('activate', (event) => {
   );
 });
 
+function offlineResponse(request) {
+  if (request.mode === 'navigate' || request.destination === 'document') {
+    return new Response('<!doctype html><meta charset="utf-8"><title>Offline</title><p>网络暂时不可用，请恢复连接后重试。</p>', {
+      status: 503,
+      statusText: 'Offline',
+      headers: { 'Content-Type': 'text/html; charset=utf-8' }
+    });
+  }
+  const contentTypes = {
+    script: 'application/javascript; charset=utf-8',
+    style: 'text/css; charset=utf-8',
+    audio: 'audio/mpeg'
+  };
+  const contentType = contentTypes[request.destination];
+  return new Response(null, {
+    status: 503,
+    statusText: 'Offline',
+    headers: contentType ? { 'Content-Type': contentType } : undefined
+  });
+}
+
+async function cacheSuccessfulResponse(cacheName, request, response) {
+  if (!response || response.status !== 200 || request.headers.has('range')) return;
+  try {
+    const cache = await caches.open(cacheName);
+    await cache.put(request, response.clone());
+  } catch (error) {
+    console.warn('[SW] runtime cache skipped:', request.url, error);
+  }
+}
+
 async function cacheFirst(request) {
+  if (request.headers.has('range')) {
+    try {
+      return await fetch(request);
+    } catch (_) {
+      return offlineResponse(request);
+    }
+  }
   const cached = await caches.match(request);
   if (cached) return cached;
-  const res = await fetch(request);
-  if (res && res.ok) {
-    const cache = await caches.open(RUNTIME_CACHE);
-    cache.put(request, res.clone());
+  try {
+    const res = await fetch(request);
+    await cacheSuccessfulResponse(RUNTIME_CACHE, request, res);
+    return res;
+  } catch (_) {
+    return offlineResponse(request);
   }
-  return res;
 }
 
 async function networkFirst(request) {
   try {
     const res = await fetch(request);
-    if (res && res.ok) {
-      const cache = await caches.open(SHELL_CACHE);
-      cache.put(request, res.clone());
-    }
+    await cacheSuccessfulResponse(SHELL_CACHE, request, res);
     return res;
   } catch (_) {
     const cached = await caches.match(request);
     if (cached) return cached;
-    throw _;
+    return offlineResponse(request);
   }
 }
 
-async function staleWhileRevalidate(request) {
-  const cached = await caches.match(request);
+async function staleWhileRevalidate(request, event) {
   const fetchPromise = fetch(request)
     .then(async (res) => {
-      if (res && res.ok) {
-        const cache = await caches.open(RUNTIME_CACHE);
-        cache.put(request, res.clone());
-      }
+      await cacheSuccessfulResponse(RUNTIME_CACHE, request, res);
       return res;
     })
     .catch(() => null);
+  event.waitUntil(fetchPromise.then(() => undefined));
+  const cached = await caches.match(request);
 
-  return cached || (await fetchPromise);
+  if (cached) return cached;
+  return (await fetchPromise) || offlineResponse(request);
 }
 
 self.addEventListener('fetch', (event) => {
@@ -119,6 +154,6 @@ self.addEventListener('fetch', (event) => {
   }
 
   // Others: stale-while-revalidate
-  event.respondWith(staleWhileRevalidate(req));
+  event.respondWith(staleWhileRevalidate(req, event));
 });
 

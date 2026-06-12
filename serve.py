@@ -4,6 +4,7 @@ import hmac
 import json
 import mimetypes
 import os
+import re
 import time
 import uuid
 from pathlib import Path
@@ -12,7 +13,7 @@ from urllib.parse import urlencode, urlparse
 
 import httpx
 import uvicorn
-from fastapi import FastAPI, File, HTTPException, Request, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response
 from pydantic import BaseModel, Field
@@ -22,6 +23,20 @@ from storage import get_storage
 
 # Global storage backend (lazy-initialized via get_storage())
 _storage: Any | None = None
+_upload_locks: dict[str, asyncio.Lock] = {}
+_UPLOAD_LOCKS_MAX = 2048
+
+
+def _get_upload_lock(user_id: str) -> asyncio.Lock:
+    """Get or create a per-user upload lock with bounded cache."""
+    lock = _upload_locks.get(user_id)
+    if lock is not None:
+        return lock
+    if len(_upload_locks) >= _UPLOAD_LOCKS_MAX:
+        _upload_locks.clear()
+    lock = asyncio.Lock()
+    _upload_locks[user_id] = lock
+    return lock
 
 
 def _s() -> Any:
@@ -34,9 +49,13 @@ def _s() -> Any:
 app = FastAPI()
 ROOT_DIR = Path(__file__).resolve().parent
 UPLOAD_DIR = ROOT_DIR / "uploads"
-MAX_UPLOAD_BYTES = int(os.environ.get("MAX_UPLOAD_BYTES", str(8 * 1024 * 1024)))
+MAX_UPLOAD_BYTES = int(os.environ.get("MAX_UPLOAD_BYTES", str(20 * 1024 * 1024)))
 MAX_UPLOAD_FILES = int(os.environ.get("MAX_UPLOAD_FILES", "30"))
-MAX_REQUEST_BODY_BYTES = int(os.environ.get("MAX_REQUEST_BODY_BYTES", str(32 * 1024 * 1024)))
+MAX_UPLOAD_BATCH_FILES = int(os.environ.get("MAX_UPLOAD_BATCH_FILES", "3"))
+MAX_REQUEST_BODY_BYTES = int(os.environ.get(
+    "MAX_REQUEST_BODY_BYTES",
+    str(MAX_UPLOAD_BYTES * MAX_UPLOAD_BATCH_FILES + 4 * 1024 * 1024),
+))
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
 CAPTION_CONCURRENCY = int(os.environ.get("CAPTION_CONCURRENCY", "4"))
 APP_ENV = os.environ.get("APP_ENV", "development").strip().lower()
@@ -117,6 +136,12 @@ class RecommendRequest(BaseModel):
     photos: list[dict[str, Any]] = Field(default_factory=list, max_length=30)
     themes: list[dict[str, Any]] = Field(default_factory=list, max_length=50)
     tracks: list[dict[str, Any]] = Field(default_factory=list, max_length=50)
+
+
+class DeleteUploadsRequest(BaseModel):
+    urls: list[str] = Field(default_factory=list, max_length=30)
+    ids: list[str] = Field(default_factory=list, max_length=30)
+    filenames: list[str] = Field(default_factory=list, max_length=30)
 
 
 def sign_value(value: str) -> str:
@@ -288,6 +313,23 @@ async def persist_upload(request: Request, filename: str, data: bytes, content_t
     return make_public_url(request, f"/uploads/{user_id}/{filename}")
 
 
+def current_user_upload_path(request: Request, raw_url: str) -> str | None:
+    parsed = urlparse(str(raw_url or "").strip())
+    path = parsed.path if parsed.scheme in ("http", "https") else str(raw_url or "")
+    parts = path.strip("/").split("/")
+    if len(parts) != 3 or parts[0] != "uploads":
+        return None
+    _, user_id, filename = parts
+    if user_id != request.state.user_id or "/" in filename or "\\" in filename:
+        return None
+    return f"{user_id}/{filename}"
+
+
+async def delete_stored_paths(paths: list[str]) -> None:
+    if paths:
+        await asyncio.gather(*(_s().delete(path) for path in paths), return_exceptions=True)
+
+
 def safe_json_from_text(content: str) -> dict[str, Any]:
     text = (content or "").replace("```json", "").replace("```", "").strip()
     start = text.find("{")
@@ -332,6 +374,39 @@ async def call_ark_chat(messages: list[dict[str, Any]], *, vision: bool = False)
         resp.raise_for_status()
         resp_data = resp.json()
         return resp_data["choices"][0]["message"]["content"]
+
+
+def get_minimax_config(vision: bool = False) -> tuple[str, str, str] | None:
+    api_key = os.environ.get("MINIMAX_API_KEY")
+    if not api_key:
+        return None
+    base_url = os.environ.get("MINIMAX_BASE_URL", "https://api.minimaxi.com/v1").rstrip("/")
+    model = os.environ.get("MINIMAX_MODEL", "MiniMax-M3")
+    return api_key, base_url, model
+
+
+async def call_minimax_chat(messages: list[dict[str, Any]], vision: bool = False) -> str | None:
+    config = get_minimax_config(vision=vision)
+    if not config:
+        return None
+
+    api_key, base_url, model = config
+    url = f"{base_url}/chat/completions"
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+    payload = {"model": model, "messages": messages, "temperature": 0.3}
+
+    async with httpx.AsyncClient(timeout=30) as client:
+        resp = await client.post(url, headers=headers, json=payload)
+        resp.raise_for_status()
+        data = resp.json()
+        return data["choices"][0]["message"]["content"]
+
+
+async def call_llm(messages: list[dict[str, Any]], vision: bool = False) -> str | None:
+    """Call LLM, preferring MiniMax, falling back to ARK."""
+    if get_minimax_config(vision=vision):
+        return await call_minimax_chat(messages, vision=vision)
+    return await call_ark_chat(messages, vision=vision)
 
 
 def fallback_caption(album_type: str | None = "default") -> str:
@@ -456,51 +531,130 @@ def normalize_storyline_chapters(
     return chapters
 
 
-def uploaded_filename_for(file: UploadFile, content_type: str | None = None) -> str:
-    content_type = (content_type or file.content_type or "").lower()
+def valid_photo_id(value: str | None) -> str | None:
+    value = str(value or "").strip()
+    if re.fullmatch(r"[a-zA-Z0-9_-]{8,80}", value):
+        return value
+    return None
+
+
+def uploaded_filename_for(
+    _file: UploadFile | None,
+    content_type: str | None = None,
+    photo_id: str | None = None,
+) -> str:
+    content_type = (content_type or "").lower()
     guessed_ext = mimetypes.guess_extension(content_type) or ""
-    original_ext = Path(file.filename or "").suffix.lower()
-    ext = guessed_ext if guessed_ext in {".jpg", ".jpeg", ".png", ".webp", ".gif"} else original_ext
+    ext = guessed_ext if guessed_ext in {".jpg", ".jpeg", ".png", ".webp", ".gif"} else ".jpg"
     if ext == ".jpe":
         ext = ".jpg"
     if ext not in {".jpg", ".jpeg", ".png", ".webp", ".gif"}:
         ext = ".jpg"
-    return f"{uuid.uuid4().hex}{ext}"
+    return f"{valid_photo_id(photo_id) or uuid.uuid4().hex}{ext}"
 
 
 @app.post("/api/upload")
-async def upload_photos(request: Request, files: list[UploadFile] = File(...)):
+async def upload_photos(
+    request: Request,
+    files: list[UploadFile] = File(...),
+    photo_ids: list[str] = Form(default=[]),
+):
     if not files:
         raise HTTPException(status_code=400, detail="No files uploaded")
-    if len(files) > MAX_UPLOAD_FILES:
-        raise HTTPException(status_code=400, detail=f"Upload at most {MAX_UPLOAD_FILES} images")
+    if len(files) > MAX_UPLOAD_BATCH_FILES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Upload at most {MAX_UPLOAD_BATCH_FILES} images per batch",
+        )
+    if photo_ids and (
+        len(photo_ids) != len(files)
+        or any(valid_photo_id(photo_id) is None for photo_id in photo_ids)
+        or len(set(photo_ids)) != len(photo_ids)
+    ):
+        raise HTTPException(status_code=400, detail="Invalid photo identifiers")
 
     photos = []
+    stored_paths: list[str] = []
 
-    for file in files:
+    # Read and validate all files BEFORE acquiring the per-user lock
+    file_infos: list[tuple[bytes, str, str | None]] = []
+    for index, file in enumerate(files):
         data = await read_upload_bytes(file)
         content_type = sniff_image_content_type(data)
         if not content_type or content_type not in ALLOWED_IMAGE_TYPES:
             raise HTTPException(status_code=400, detail="Unsupported or invalid image")
+        requested_id = photo_ids[index] if photo_ids else None
+        file_infos.append((data, content_type, requested_id))
 
-        filename = uploaded_filename_for(file, content_type)
-        photo_id = Path(filename).stem
+    upload_lock = _get_upload_lock(request.state.user_id)
+    async with upload_lock:
+        try:
+            existing_count = await _s().count(request.state.user_id, MAX_UPLOAD_FILES + 1)
+        except Exception as e:
+            print("Upload quota check failed:", repr(e))
+            raise HTTPException(status_code=503, detail="Upload storage is unavailable") from e
+        if existing_count + len(files) > MAX_UPLOAD_FILES:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Your cloud album can store at most {MAX_UPLOAD_FILES} photos",
+            )
 
         try:
-            url = await persist_upload(request, filename, data, content_type)
+            for data, content_type, requested_id in file_infos:
+                filename = uploaded_filename_for(None, content_type, requested_id)
+                photo_id = Path(filename).stem
+                stored_path = f"{request.state.user_id}/{filename}"
+                stored_paths.append(stored_path)
+                url = await persist_upload(request, filename, data, content_type)
+                photos.append({
+                    "id": photo_id,
+                    "filename": filename,
+                    "url": url,
+                    "absoluteUrl": url,
+                    "size": len(data),
+                    "contentType": content_type,
+                })
+        except HTTPException:
+            await delete_stored_paths(stored_paths)
+            raise
         except Exception as e:
+            await delete_stored_paths(stored_paths)
             print("Upload persistence failed:", repr(e))
             raise HTTPException(status_code=503, detail="Upload storage is unavailable") from e
 
-        photos.append({
-            "id": photo_id,
-            "url": url,
-            "absoluteUrl": url,
-            "size": len(data),
-            "contentType": content_type,
-        })
-
     return JSONResponse({"photos": photos})
+
+
+@app.post("/api/uploads/delete")
+async def delete_uploads(request: Request, data: DeleteUploadsRequest):
+    url_paths = [
+        path
+        for raw_url in data.urls
+        if (path := current_user_upload_path(request, raw_url))
+    ]
+    # Prefer filenames (with known extensions) over ID-based guessing
+    filename_paths = [
+        f"{request.state.user_id}/{filename}"
+        for raw_filename in data.filenames
+        if (filename := raw_filename.strip())
+        and "/" not in filename
+        and "\\" not in filename
+    ]
+    # Fallback: enumerate possible extensions for IDs (legacy clients)
+    id_paths = [
+        f"{request.state.user_id}/{photo_id}{extension}"
+        for raw_id in data.ids
+        if (photo_id := valid_photo_id(raw_id))
+        for extension in (".jpg", ".jpeg", ".png", ".webp", ".gif")
+    ] if not data.filenames else []
+    paths = list(dict.fromkeys(url_paths + filename_paths + id_paths))
+    results = await asyncio.gather(*(_s().delete(path) for path in paths), return_exceptions=True)
+    deleted = sum(result is True for result in results)
+    return JSONResponse({
+        "requested": len(data.urls) + len(data.filenames) + (len(data.ids) if not data.filenames else 0),
+        "matched": len(paths),
+        "deleted": deleted,
+    })
 
 
 @app.get("/uploads/{user_id}/{filename}")
@@ -529,7 +683,7 @@ async def serve_upload(
                         headers={"Cache-Control": "private, no-store"},
                     )
 
-            data = storage.read_object(key)
+            data = await storage.read_object(key)
             if data is not None:
                 return Response(
                     content=data,
@@ -554,8 +708,14 @@ async def generate_caption_for_photo(request: Request, photo: CaptionPhoto, albu
         return fallback_caption(album_type)
 
     prompt = (
-        "用一句中文描述这张相册照片，突出温馨、自然、可爱或有纪念意义的感觉。"
-        "不要编造具体身份，不超过20个字，只返回一句配文。"
+        "你是一位相册配文师。先理解这张照片：\n"
+        "- 场景类型（室内/户外/城市/自然/餐饮/其他）\n"
+        "- 人物情况（人数、年龄段、互动关系）\n"
+        "- 主色调与光线氛围\n"
+        "- 情绪基调（温馨/欢乐/宁静/浪漫/怀旧/其他）\n\n"
+        "然后根据以上分析，写一句不超过15字的中文配文，"
+        "突出温馨、自然、有纪念意义的感觉。\n"
+        "不要描述画面细节，不要编造具体身份，只输出配文本句。"
     )
     messages = [{
         "role": "user",
@@ -566,7 +726,7 @@ async def generate_caption_for_photo(request: Request, photo: CaptionPhoto, albu
     }]
 
     try:
-        content = await call_ark_chat(messages, vision=True)
+        content = await call_llm(messages, vision=True)
         caption = (content or "").strip().strip("\"'“”")
         if caption:
             return caption[:40]
@@ -604,7 +764,7 @@ async def generate_captions(request: Request, data: CaptionsRequest):
 
 
 @app.post("/api/storyline")
-async def generate_storyline(data: StorylineRequest):
+async def generate_storyline(request: Request, data: StorylineRequest):
     photos = [photo for photo in data.photos[:30] if photo.id]
     if not photos:
         return JSONResponse({"chapters": []})
@@ -623,7 +783,7 @@ async def generate_storyline(data: StorylineRequest):
 {json.dumps(compact_photos, ensure_ascii=False)}
 
 任务：
-1. 根据配文内容和氛围，把所有照片分成 2-4 个章节
+1. 根据照片的视觉风格（色调、场景、氛围）和配文内容，把所有照片分成 2-4 个章节
 2. 每个章节起一个标题（2-4字）+ 一句话描述
 3. 给每个章节内照片排序，形成叙事节奏
 
@@ -631,8 +791,27 @@ async def generate_storyline(data: StorylineRequest):
 {{"chapters":[{{"title":"初见","description":"宝宝初来人世的美好瞬间","photo_ids":["p3","p1","p5"]}}]}}
 photo_ids 必须只使用输入中出现过的 id，且每张照片必须且只能出现一次。"""
 
+    # Include up to 3 representative photo thumbnails for visual context
+    photo_urls = []
+    if photos:
+        indices = [0]
+        if len(photos) >= 3:
+            indices.append(len(photos) // 2)
+            indices.append(-1)
+        for idx in indices:
+            url = getattr(photos[idx], 'url', None) or getattr(photos[idx], 'src', None)
+            if url:
+                norm = normalize_same_origin_asset_url(request, str(url))
+                if norm:
+                    photo_urls.append(norm)
+
     try:
-        content = await call_ark_chat([{"role": "user", "content": prompt}], vision=False)
+        messages = [{"role": "user", "content": [{"type": "text", "text": prompt}]}]
+        if photo_urls:
+            messages[0]["content"].extend(
+                {"type": "image_url", "image_url": {"url": url}} for url in photo_urls
+            )
+        content = await call_llm(messages, vision=bool(photo_urls))
         if content:
             result = safe_json_from_text(content)
             chapters = normalize_storyline_chapters(
@@ -693,9 +872,9 @@ async def recommend(request: Request, data: RecommendRequest):
                 "content": [{"type": "text", "text": prompt}]
                 + [{"type": "image_url", "image_url": {"url": url}} for url in photo_urls],
             }]
-            content = await call_ark_chat(messages, vision=True)
+            content = await call_llm(messages, vision=True)
         if not content:
-            content = await call_ark_chat([{"role": "user", "content": prompt}], vision=False)
+            content = await call_llm([{"role": "user", "content": prompt}], vision=False)
         if not content:
             return JSONResponse({"themeId": "", "trackSrc": ""})
 
@@ -728,9 +907,16 @@ async def health():
         "environment": APP_ENV,
         "storage": storage_mode(),
         "s3PresignedRead": storage_mode() == "s3" and S3_PRESIGNED_READ,
-        "visionConfigured": bool(get_ark_config(vision=True)),
-        "textConfigured": bool(get_ark_config(vision=False)),
+        "visionConfigured": bool(get_minimax_config(vision=True)) or bool(get_ark_config(vision=True)),
+        "textConfigured": bool(get_minimax_config(vision=False)) or bool(get_ark_config(vision=False)),
+        "llmProvider": "minimax" if bool(get_minimax_config()) else ("ark" if bool(get_ark_config()) else "none"),
+        "minimaxConfigured": bool(get_minimax_config()),
+        "arkConfigured": bool(get_ark_config()),
         "sessionSecretConfigured": SESSION_SECRET_CONFIGURED,
+        "maxUploadBytes": MAX_UPLOAD_BYTES,
+        "maxUploadFiles": MAX_UPLOAD_FILES,
+        "maxUploadBatchFiles": MAX_UPLOAD_BATCH_FILES,
+        "maxRequestBodyBytes": MAX_REQUEST_BODY_BYTES,
         "warnings": warnings,
     })
 

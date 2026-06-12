@@ -485,6 +485,10 @@
       cursor: pointer; box-shadow: 0 10px 20px var(--shadow); transition: all 0.3s;
     }
     .upload-btn:hover { transform: scale(1.05); filter: brightness(1.1); }
+    .upload-btn:disabled { opacity: 0.55; cursor: wait; transform: none; }
+    .upload-status { min-height: 24px; margin-top: 16px; font-size: 0.9rem; font-weight: 700; color: #666; }
+    .upload-status.error { color: #b42318; }
+    .upload-status.success { color: #18794e; }
 
     /* Scene wrapper (The Book) */
     .scene-wrapper {
@@ -892,6 +896,7 @@
         <p class="upload-hint">上传照片，AI 将为您智能生成精美背景、温馨配乐与动人配文。</p>
         <input type="file" id="photoUpload" multiple accept="image/*" class="hidden">
         <button class="upload-btn" id="startBtn">立即开启创作</button>
+        <p id="uploadStatus" class="upload-status" aria-live="polite"></p>
       </div>
     </div>
 
@@ -992,6 +997,11 @@
       let uploadedObjectUrls = [];
       const UPLOADED_ALBUM_KEY = 'v23_uploaded_album';
       const API_BASE_URL = String(window.ALBUM_API_BASE_URL || '').replace(/\/+$/, '');
+      const MAX_ALBUM_FILES = 30;
+      const MAX_FILE_BYTES = 20 * 1024 * 1024;
+      const UPLOAD_BATCH_SIZE = 3;
+      const CAPTION_BATCH_SIZE = 8;
+      let uploadInProgress = false;
 
       function apiUrl(path) {
         const normalizedPath = String(path || '').startsWith('/') ? String(path) : `/${path}`;
@@ -1115,15 +1125,20 @@
         if (persistedPhotos.length === 0) return false;
 
         const persistedIds = persistedPhotos.map(photo => photo.id).filter(Boolean);
-        localStorage.setItem(UPLOADED_ALBUM_KEY, JSON.stringify({
-          title,
-          photos: persistedPhotos,
-          chapters: sanitizeChaptersForStorage(chapters, persistedIds),
-          theme: currentTheme,
-          track: currentTrack,
-          createdAt: Date.now()
-        }));
-        return true;
+        try {
+          localStorage.setItem(UPLOADED_ALBUM_KEY, JSON.stringify({
+            title,
+            photos: persistedPhotos,
+            chapters: sanitizeChaptersForStorage(chapters, persistedIds),
+            theme: currentTheme,
+            track: currentTrack,
+            createdAt: Date.now()
+          }));
+          return true;
+        } catch (error) {
+          console.warn('[Album] failed to remember uploaded album locally', error);
+          return false;
+        }
       }
 
       function loadUploadedAlbum() {
@@ -1237,6 +1252,7 @@
       const loadingOverlay = document.getElementById('loadingOverlay');
       const startBtn = document.getElementById('startBtn');
       const photoUpload = document.getElementById('photoUpload');
+      const uploadStatus = document.getElementById('uploadStatus');
       const uploadContainer = document.getElementById('uploadContainer');
       const albumMain = document.getElementById('albumMain');
       const albumFooter = document.getElementById('albumFooter');
@@ -1371,6 +1387,16 @@
         if (progressTitle && title) progressTitle.innerText = title;
       }
 
+      function showUploadStatus(message, type = '') {
+        if (!uploadStatus) return;
+        uploadStatus.textContent = message || '';
+        uploadStatus.className = `upload-status ${type}`.trim();
+      }
+
+      function formatFileSize(bytes) {
+        return `${Math.ceil(bytes / (1024 * 1024))}MB`;
+      }
+
       async function preloadUrl(url) {
         if (!url) return;
         const res = await fetch(url, { cache: 'force-cache' });
@@ -1424,51 +1450,109 @@
         const timer = setTimeout(() => controller.abort(), timeoutMs);
         try {
           const res = await fetch(url, { credentials: 'include', ...options, signal: controller.signal });
-          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          if (!res.ok) {
+            let detail = '';
+            try {
+              const errorBody = await res.json();
+              detail = errorBody?.detail ? `: ${errorBody.detail}` : '';
+            } catch (_) {}
+            throw new Error(`HTTP ${res.status}${detail}`);
+          }
           return await res.json();
         } finally {
           clearTimeout(timer);
         }
       }
 
-      async function uploadFilesToServer(files) {
-        const formData = new FormData();
-        files.forEach(file => formData.append('files', file));
-        const data = await fetchJsonWithTimeout(apiUrl('/api/upload'), {
-          method: 'POST',
-          body: formData
-        }, 30000);
-
-        if (!data || !Array.isArray(data.photos) || data.photos.length === 0) {
-          throw new Error('Empty upload response');
+      async function deleteUploadedPhotos(photos) {
+        const urls = [...new Set(photos.map(photo => photo?.src).filter(Boolean))];
+        const filenames = [...new Set(photos.map(photo => photo?.filename).filter(Boolean))];
+        if (urls.length === 0 && filenames.length === 0) return;
+        try {
+          await fetchJsonWithTimeout(apiUrl('/api/uploads/delete'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ urls, filenames })
+          }, 20000);
+        } catch (cleanupError) {
+          console.warn('[Upload] cleanup failed', cleanupError);
         }
-
-        return data.photos.map((photo, i) => ({
-          id: photo.id || String(i),
-          src: photo.url,
-          caption: '',
-          persisted: true
-        }));
       }
 
-      async function requestAICaptions(photos, { albumType, title, fallbackCaptions }) {
-        const payload = {
-          albumType,
-          title,
-          photos: photos.map(photo => ({ id: photo.id, url: photo.src }))
-        };
-        const data = await fetchJsonWithTimeout(apiUrl('/api/captions'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        }, 45000);
+      function createUploadPhotoId() {
+        if (window.crypto?.randomUUID) return window.crypto.randomUUID().replaceAll('-', '');
+        return `photo_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`;
+      }
 
-        const captions = Array.isArray(data.captions) ? data.captions : [];
-        const byId = new Map(captions.map(item => [item.id, item.caption]));
-        return photos.map((photo, i) => ({
+      async function uploadFilesToServer(files, onProgress) {
+        const uploaded = [];
+        try {
+          for (let offset = 0; offset < files.length; offset += UPLOAD_BATCH_SIZE) {
+            const batch = files.slice(offset, offset + UPLOAD_BATCH_SIZE);
+            const batchIds = batch.map(() => createUploadPhotoId());
+            const formData = new FormData();
+            batch.forEach((file, index) => {
+              formData.append('files', file);
+              formData.append('photo_ids', batchIds[index]);
+            });
+            const batchBytes = batch.reduce((sum, file) => sum + file.size, 0);
+            const timeoutMs = Math.min(180000, Math.max(60000, Math.ceil(batchBytes / (512 * 1024)) * 1000 + 30000));
+            const data = await fetchJsonWithTimeout(apiUrl('/api/upload'), {
+              method: 'POST',
+              body: formData
+            }, timeoutMs);
+
+            if (!data || !Array.isArray(data.photos) || data.photos.length !== batch.length) {
+              throw new Error('上传响应不完整');
+            }
+
+            uploaded.push(...data.photos.map((photo, i) => ({
+              id: photo.id || batchIds[i],
+              filename: photo.filename,
+              src: photo.url,
+              caption: '',
+              persisted: true
+            })));
+            onProgress?.(uploaded.length, files.length, '');
+          }
+          return uploaded;
+        } catch (error) {
+          // Server guarantees per-batch atomicity: on failure, all files in the
+          // failed batch are rolled back. Clean up only what was persisted.
+          await deleteUploadedPhotos(uploaded);
+          throw error;
+        }
+      }
+
+      async function requestAICaptions(photos, { albumType, title, fallbackCaptions, onProgress }) {
+        const result = photos.map((photo, i) => ({
           ...photo,
-          caption: byId.get(photo.id) || captions[i]?.caption || fallbackCaptions[i] || '值得珍藏的美好瞬间'
+          caption: fallbackCaptions[i] || '值得珍藏的美好瞬间'
         }));
+
+        for (let offset = 0; offset < photos.length; offset += CAPTION_BATCH_SIZE) {
+          const batch = photos.slice(offset, offset + CAPTION_BATCH_SIZE);
+          try {
+            const data = await fetchJsonWithTimeout(apiUrl('/api/captions'), {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                albumType,
+                title,
+                photos: batch.map(photo => ({ id: photo.id, url: photo.src }))
+              })
+            }, 55000);
+            const captions = Array.isArray(data.captions) ? data.captions : [];
+            const byId = new Map(captions.map(item => [item.id, item.caption]));
+            batch.forEach((photo, i) => {
+              result[offset + i].caption = byId.get(photo.id) || captions[i]?.caption || result[offset + i].caption;
+            });
+          } catch (captionError) {
+            console.info('[Caption] batch unavailable; using local captions.', captionError);
+          }
+          onProgress?.(Math.min(offset + batch.length, photos.length), photos.length);
+        }
+        return result;
       }
 
       function ensurePhotoIds(photos) {
@@ -2378,11 +2462,24 @@
       }
 
       // Actions
-      startBtn.onclick = () => photoUpload.click();
+      startBtn.onclick = () => {
+        if (!uploadInProgress) photoUpload.click();
+      };
 
       photoUpload.onchange = async (e) => {
         const files = Array.from(e.target.files);
         if (files.length === 0) return;
+        if (files.length > MAX_ALBUM_FILES) {
+          showUploadStatus(`一次最多选择 ${MAX_ALBUM_FILES} 张照片。`, 'error');
+          photoUpload.value = '';
+          return;
+        }
+        const oversized = files.find(file => file.size > MAX_FILE_BYTES);
+        if (oversized) {
+          showUploadStatus(`“${oversized.name}”为 ${formatFileSize(oversized.size)}，单张照片不能超过 20MB。`, 'error');
+          photoUpload.value = '';
+          return;
+        }
 
         const albumTitle = "我们的<br>回忆录";
         const plainTitle = "我们的回忆录";
@@ -2391,71 +2488,98 @@
         let photoData = [];
         let chapters = [];
 
+        uploadInProgress = true;
+        startBtn.disabled = true;
         try {
-          showLoader('☁️ 正在上传照片...');
-          setProgress(8, '☁️ 正在上传照片...');
-          photoData = ensurePhotoIds(await uploadFilesToServer(files));
-          setProgress(45, `☁️ 上传完成，正在生成配文...`);
+          showUploadStatus(`已选择 ${files.length} 张照片，正在安全上传到云端。`);
 
           try {
+            showLoader('☁️ 正在上传照片...');
+            setProgress(8, '☁️ 正在上传照片...');
+            photoData = ensurePhotoIds(await uploadFilesToServer(files, (done, total, note) => {
+              const pct = 8 + Math.round((done / total) * 37);
+              setProgress(pct, `☁️ 正在上传照片 (${done}/${total})${note ? ` · ${note}` : ''}`);
+            }));
+            showUploadStatus(`${photoData.length} 张照片已安全保存到云端。`, 'success');
+            setProgress(45, `☁️ 上传完成，正在生成配文...`);
+
             photoData = await requestAICaptions(photoData, {
               albumType: effectiveAlbumType,
               title: plainTitle,
-              fallbackCaptions
+              fallbackCaptions,
+              onProgress: (done, total) => {
+                const pct = 45 + Math.round((done / total) * 27);
+                setProgress(pct, `🪄 正在生成配文 (${done}/${total})`);
+              }
             });
             setProgress(72, '🪄 AI 配文生成完成');
-          } catch (captionError) {
-            console.info('[Caption] unavailable; using local captions.', captionError);
-            photoData = photoData.map((photo, i) => ({
-              ...photo,
-              caption: fallbackCaptions[i] || '值得珍藏的美好瞬间'
-            }));
-            setProgress(72, '🪄 已使用本地配文');
+          } catch (uploadError) {
+            console.error('[Upload] failed', uploadError);
+            hideLoader();
+            showUploadStatus(`上传失败，照片尚未保存。请检查网络后重新选择照片。${uploadError?.message ? ` (${uploadError.message})` : ''}`, 'error');
+            return;
           }
-        } catch (uploadError) {
-          console.info('[Upload] backend unavailable; using local preview.', uploadError);
-          setProgress(35, '📸 后端不可用，改用本地预览...');
-          photoData = ensurePhotoIds(createLocalPreviewPhotos(files, fallbackCaptions));
+
+          try {
+            setProgress(82, '🧭 AI 正在规划故事线...');
+            try {
+              chapters = await requestStoryline(photoData, {
+                albumType: effectiveAlbumType,
+                title: plainTitle
+              });
+              setProgress(88, '🧭 故事线生成完成');
+            } catch (storylineError) {
+              console.info('[Storyline] unavailable; using local storyline.', storylineError);
+              chapters = buildFallbackStoryline(photoData, effectiveAlbumType);
+              setProgress(88, '🧭 已生成本地故事线');
+            }
+
+            hideLoader();
+            chapters = await showStorylinePreview(photoData, chapters, {
+              albumType: effectiveAlbumType,
+              title: plainTitle
+            });
+            photoData = orderPhotosByChapters(photoData, chapters);
+
+            showLoader('🎼 正在推荐主题和音乐...');
+            setProgress(92, '🎼 正在推荐主题和音乐...');
+            await applyLLMRecommendationForAlbum({
+              albumType: effectiveAlbumType,
+              title: plainTitle,
+              photos: photoData,
+              captions: photoData.map(p => p.caption)
+            });
+
+            if (persistUploadedAlbum(photoData, albumTitle, chapters)) {
+              albumType = 'uploaded';
+              const newUrl = `${window.location.pathname}?album=uploaded`;
+              window.history.replaceState({ path: newUrl }, '', newUrl);
+            }
+
+            setProgress(96, '📖 正在生成相册...');
+            await enterAlbum(photoData, albumTitle, { force: true, chapters });
+          } catch (flowError) {
+            console.error('[Album] generation failed after upload', flowError);
+            const recoveryChapters = chapters.length ? chapters : buildFallbackStoryline(photoData, effectiveAlbumType);
+            let recoverySaved = false;
+            try {
+              recoverySaved = persistUploadedAlbum(photoData, albumTitle, recoveryChapters);
+            } catch (recoveryError) {
+              console.warn('[Album] recovery draft failed', recoveryError);
+            }
+            if (recoverySaved) {
+              showUploadStatus('照片已保存，但相册生成未完成。刷新页面后可以继续查看已保存的照片。', 'error');
+            } else {
+              await deleteUploadedPhotos(photoData);
+              showUploadStatus('相册生成失败，已清理本次上传。请重新选择照片。', 'error');
+            }
+          }
+        } finally {
+          hideLoader();
+          photoUpload.value = '';
+          uploadInProgress = false;
+          startBtn.disabled = false;
         }
-
-        setProgress(82, '🧭 AI 正在规划故事线...');
-        try {
-          chapters = await requestStoryline(photoData, {
-            albumType: effectiveAlbumType,
-            title: plainTitle
-          });
-          setProgress(88, '🧭 故事线生成完成');
-        } catch (storylineError) {
-          console.info('[Storyline] unavailable; using local storyline.', storylineError);
-          chapters = buildFallbackStoryline(photoData, effectiveAlbumType);
-          setProgress(88, '🧭 已生成本地故事线');
-        }
-
-        hideLoader();
-        chapters = await showStorylinePreview(photoData, chapters, {
-          albumType: effectiveAlbumType,
-          title: plainTitle
-        });
-        photoData = orderPhotosByChapters(photoData, chapters);
-
-        showLoader('🎼 正在推荐主题和音乐...');
-        setProgress(92, '🎼 正在推荐主题和音乐...');
-        await applyLLMRecommendationForAlbum({
-          albumType: effectiveAlbumType,
-          title: plainTitle,
-          photos: photoData,
-          captions: photoData.map(p => p.caption)
-        });
-
-        if (persistUploadedAlbum(photoData, albumTitle, chapters)) {
-          albumType = 'uploaded';
-          const newUrl = `${window.location.pathname}?album=uploaded`;
-          window.history.replaceState({ path: newUrl }, '', newUrl);
-        }
-
-        setProgress(96, '📖 正在生成相册...');
-        await enterAlbum(photoData, albumTitle, { force: true, chapters });
-        photoUpload.value = '';
       };
 
       document.getElementById('nextBtn').onclick = () => { 
