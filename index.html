@@ -2152,7 +2152,7 @@
         console.log("Asking LLM to recommend for:", payload.albumType);
         const fallback = getLocalRecommendation(payload.albumType);
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 8000);
+        const timeoutId = setTimeout(() => controller.abort(), 45000);
 
         try {
           const res = await fetch(apiUrl('/api/recommend'), {
