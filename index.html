@@ -1122,6 +1122,8 @@
       let recommendedThemeId = null;
       let recommendedTrackSrc = null;
       let uploadedObjectUrls = [];
+      let audioPlaybackPrimed = false;
+      let primedAudioVolume = 1;
       const UPLOADED_ALBUM_KEY = 'v23_uploaded_album';
       const API_BASE_URL = String(window.ALBUM_API_BASE_URL || '').replace(/\/+$/, '');
       const MAX_ALBUM_FILES = 30;
@@ -1133,6 +1135,51 @@
       function apiUrl(path) {
         const normalizedPath = String(path || '').startsWith('/') ? String(path) : `/${path}`;
         return API_BASE_URL ? `${API_BASE_URL}${normalizedPath}` : normalizedPath;
+      }
+
+      function protectedAssetUrl(rawUrl) {
+        const value = String(rawUrl || '').trim();
+        if (!value || value.startsWith('blob:') || value.startsWith('data:')) return value;
+        try {
+          const parsed = new URL(value, window.location.href);
+          if (parsed.pathname.startsWith('/uploads/')) {
+            parsed.searchParams.set('proxy', '1');
+            return apiUrl(`${parsed.pathname}?${parsed.searchParams.toString()}`);
+          }
+        } catch (_) {}
+        return value;
+      }
+
+      function isProtectedUploadUrl(rawUrl) {
+        try {
+          return new URL(String(rawUrl || ''), window.location.href).pathname.startsWith('/uploads/');
+        } catch (_) {
+          return false;
+        }
+      }
+
+      async function prepareAlbumPhotosForDisplay(photos) {
+        const prepared = Array.isArray(photos) ? photos.map(photo => ({ ...photo })) : [];
+        for (let offset = 0; offset < prepared.length; offset += UPLOAD_BATCH_SIZE) {
+          const batch = prepared.slice(offset, offset + UPLOAD_BATCH_SIZE);
+          await Promise.all(batch.map(async photo => {
+            if (!photo?.persisted || photo.displaySrc || !isProtectedUploadUrl(photo.src)) return;
+            try {
+              const response = await fetch(protectedAssetUrl(photo.src), {
+                credentials: 'include',
+                cache: 'no-store'
+              });
+              if (!response.ok) throw new Error(`HTTP ${response.status}`);
+              const blob = await response.blob();
+              if (!blob.type.startsWith('image/')) throw new Error('Response is not an image');
+              photo.displaySrc = URL.createObjectURL(blob);
+              uploadedObjectUrls.push(photo.displaySrc);
+            } catch (error) {
+              console.warn('[Album] protected photo could not be prepared', error);
+            }
+          }));
+        }
+        return prepared;
       }
 
       function escapeHtml(value) {
@@ -1335,7 +1382,7 @@
 
       function buildPhotoMarkup(photo) {
         if (!photo || !photo.src) return '';
-        const src = escapeHtml(photo.src);
+        const src = escapeHtml(photo.displaySrc || protectedAssetUrl(photo.src));
         const webp = photo.srcWebp ? escapeHtml(photo.srcWebp) : '';
 
         if (webp) {
@@ -1435,6 +1482,25 @@
           console.warn('[BGM] play() rejected:', reason, err);
           return false;
         }
+      }
+
+      async function primeAudioPlayback() {
+        if (audioPlaybackPrimed || !bgm) return;
+        try {
+          primedAudioVolume = bgm.volume;
+          bgm.volume = 0;
+          const playPromise = bgm.play();
+          if (playPromise && typeof playPromise.then === 'function') await playPromise;
+          audioPlaybackPrimed = true;
+        } catch (error) {
+          bgm.volume = primedAudioVolume;
+          console.info('[BGM] playback will wait for the music button.', error);
+        }
+      }
+
+      function restorePrimedAudioVolume() {
+        if (!audioPlaybackPrimed) return;
+        bgm.volume = primedAudioVolume;
       }
 
       async function switchTrack(nextSrc, { autoplay } = { autoplay: false }) {
@@ -1963,6 +2029,7 @@
           };
 
           confirmStorylineBtn.onclick = () => {
+            void primeAudioPlayback();
             chapters = normalizeStoryline(collectStorylineFromPreview(chapters), photos, albumType);
             cleanup();
             resolve(chapters);
@@ -1986,8 +2053,9 @@
 
       function pickBestPhotoUrl(photo) {
         if (!photo) return '';
+        if (photo.displaySrc) return String(photo.displaySrc);
         if (CAN_USE_WEBP && photo.srcWebp) return String(photo.srcWebp);
-        return photo.src ? String(photo.src) : '';
+        return photo.src ? protectedAssetUrl(photo.src) : '';
       }
 
       function preloadImageUrl(url, perImageTimeoutMs) {
@@ -2299,12 +2367,12 @@
       
       function getLocalRecommendation(albumType) {
         if (albumType === 'baby') {
-          return { themeId: 'moonlight-baby', trackSrc: 'assets/music/lullaby.mp3' };
+          return { themeId: 'moonlight-baby', trackSrc: 'assets/bgm_3.mp3', source: 'fallback' };
         }
         if (albumType === 'wedding') {
-          return { themeId: 'romantic-wedding', trackSrc: 'assets/bgm.mp3' };
+          return { themeId: 'romantic-wedding', trackSrc: 'assets/bgm.mp3', source: 'fallback' };
         }
-        return { themeId: 'classic', trackSrc: tracks[0].src };
+        return { themeId: 'editorial', trackSrc: 'assets/bgm_3.mp3', source: 'fallback' };
       }
 
       // Optional LLM call hooked to Python backend serve.py. Static deployments keep working via local fallback.
@@ -2326,7 +2394,13 @@
 
           const data = await res.json();
           console.log("LLM Recommendation received:", data);
-          return data;
+          const themeValid = themes.some(theme => theme.id === data?.themeId);
+          const trackValid = tracks.some(track => track.src === data?.trackSrc);
+          return {
+            themeId: themeValid ? data.themeId : fallback.themeId,
+            trackSrc: trackValid ? data.trackSrc : fallback.trackSrc,
+            source: themeValid && trackValid ? (data.source || 'ai') : 'fallback'
+          };
         } catch (e) {
           console.info("LLM recommendation unavailable; using local fallback.");
           return fallback;
@@ -2388,7 +2462,8 @@
           // 应用到 UI，并写入 localStorage，使其成为该相册类型的“智能默认”
           themes.forEach(theme => document.body.classList.remove(`theme-${theme.id}`));
           document.body.classList.add(`theme-${currentTheme}`);
-          bgm.src = currentTrack;
+          await switchTrack(currentTrack, { autoplay: audioPlaybackPrimed || isPlaying });
+          restorePrimedAudioVolume();
           saveSettings();
           renderThemes();
           renderMusic();
@@ -2590,15 +2665,16 @@
       }
 
       async function enterAlbum(photos, title, { force = false, chapters = [] } = {}) {
+        const displayPhotos = await prepareAlbumPhotosForDisplay(photos);
         // 1) 强力预加载：确保图片在任何重排/3D 变换前已完成 onload（或超时兜底）
         showLoader('📸 正在加载照片...');
-        await preloadAlbumPhotos(photos, { overallTimeoutMs: 15000, perImageTimeoutMs: 8000 });
+        await preloadAlbumPhotos(displayPhotos, { overallTimeoutMs: 30000, perImageTimeoutMs: 12000 });
 
         // 2) 生成 DOM（仅在必要时）
         // Once photos are generated and loaded, Theme/Music switching should never rebuild `.book`.
         // Only regenerate when explicitly forced (e.g. user uploads a new set).
         if (!albumGeneratedOnce || force) {
-          generateAlbum(photos, title, chapters);
+          generateAlbum(displayPhotos, title, chapters);
         }
 
         // 3) 进一步 warm decode，降低“已下载但未解码”的短暂白屏
