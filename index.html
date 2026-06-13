@@ -1127,7 +1127,7 @@
       const MAX_ALBUM_FILES = 30;
       const MAX_FILE_BYTES = 20 * 1024 * 1024;
       const UPLOAD_BATCH_SIZE = 3;
-      const CAPTION_BATCH_SIZE = 8;
+      const CAPTION_BATCH_SIZE = 4;
       let uploadInProgress = false;
 
       function apiUrl(path) {
@@ -1690,7 +1690,7 @@
                 title,
                 photos: batch.map(photo => ({ id: photo.id, url: photo.src }))
               })
-            }, 55000);
+            }, 100000);
             const captions = Array.isArray(data.captions) ? data.captions : [];
             const byId = new Map(captions.map(item => [item.id, item.caption]));
             batch.forEach((photo, i) => {
@@ -1837,7 +1837,7 @@
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
-        }, 22000);
+        }, 150000);
         return normalizeStoryline(data.chapters, photos, albumType);
       }
 
@@ -2312,7 +2312,7 @@
         console.log("Asking LLM to recommend for:", payload.albumType);
         const fallback = getLocalRecommendation(payload.albumType);
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 45000);
+        const timeoutId = setTimeout(() => controller.abort(), 150000);
 
         try {
           const res = await fetch(apiUrl('/api/recommend'), {

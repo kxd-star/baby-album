@@ -15,16 +15,14 @@
 ```bash
 git clone https://github.com/kxd-star/baby-album.git
 cd baby-album
-git switch codex/cloud-upload-reliability
 cp .env.example .env
 ```
 
 至少配置：
 
 ```env
-ARK_API_KEY=your_key
-ARK_VISION_MODEL=your_vision_endpoint
-ARK_TEXT_MODEL=your_text_endpoint
+MINIMAX_API_KEY=your_key
+MINIMAX_MODEL=MiniMax-M3
 PUBLIC_BASE_URL=https://album.example.com
 ALLOWED_ORIGINS=https://album.example.com
 SESSION_SECRET=请使用至少32位随机字符串
@@ -50,7 +48,7 @@ curl http://127.0.0.1:8080/api/health
 
 使用 Nginx 或 Caddy 将域名反向代理到 `127.0.0.1:8080`。上传文件会保存在宿主机的 `data/uploads/`，重新部署不会丢失。
 
-前端会把大图按每批 3 张上传：单张默认最大 20MB、每个用户会话最多存储 30 张、单次请求最大约 64MB。批次失败会停止流程，并清理之前已经上传的批次，避免留下无主文件。
+前端会把大图按每批 3 张上传：单张默认最大 20MB、每个用户会话最多存储 30 张、单次请求最大约 64MB。批次失败会停止流程，并清理之前已经上传的批次，避免留下无主文件。视觉模型不会接收原始大图；服务端会从本地磁盘或 S3 读取照片，并在内存中压缩到最长边约 1280px 后调用模型。
 
 Nginx 需要允许较大的图片请求：
 
@@ -68,6 +66,9 @@ server {
 }
 ```
 
+仓库中的 `deploy/nginx.conf.example` 可作为部署模板。部署后执行
+`nginx -T | grep client_max_body_size`，确认实际生效值为 `70m`；只修改仓库配置不会自动修改云服务器上的 Nginx。
+
 ## 对象存储
 
 需要多实例部署时，配置 S3 兼容对象存储：
@@ -81,13 +82,13 @@ S3_REGION=auto
 S3_PRESIGNED_READ=true
 ```
 
-对象存储保持私有。浏览器只能访问当前匿名用户自己的图片，视觉模型通过短期签名地址读取图片。用户通过服务端鉴权后会重定向到短期 S3 预签名地址，图片下载流量不会经过 FastAPI 中转。若对象存储不支持预签名 URL，可设置 `S3_PRESIGNED_READ=false` 恢复服务端中转。
+对象存储保持私有。浏览器只能访问当前匿名用户自己的图片，视觉模型由服务端直接读取并压缩图片。用户通过服务端鉴权后会重定向到短期 S3 预签名地址，图片下载流量不会经过 FastAPI 中转。若对象存储不支持预签名 URL，可设置 `S3_PRESIGNED_READ=false` 恢复服务端中转。
 
 对象存储凭证需要具备列举、读取、写入和删除对象的权限。当前用户上传总量限制由应用实例内的锁保护；若未来运行多个后端实例，需要再接入数据库或分布式锁来保证并发配额严格一致。
 
 ## 用户数据隔离
 
-服务端会为每个浏览器签发带签名的匿名会话 Cookie。上传文件按匿名用户 ID 分目录保存，其他用户即使拿到图片 URL 也无法访问。AI 识图使用短期签名 URL。
+服务端会为每个浏览器签发带签名的匿名会话 Cookie。上传文件按匿名用户 ID 分目录保存，其他用户即使拿到图片 URL 也无法访问。AI 识图同样会校验照片属于当前用户。
 
 这能隔离不同设备和不同浏览器会话；若需要同一设备切换账号、跨设备同步或账号找回，还需要继续接入登录系统并将匿名用户 ID 绑定到正式用户账号。
 

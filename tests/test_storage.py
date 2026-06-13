@@ -49,6 +49,7 @@ class LocalStorageTests(unittest.IsolatedAsyncioTestCase):
 
             await storage.save(b"photo", path, "image/jpeg")
             self.assertEqual((Path(tmp) / path).read_bytes(), b"photo")
+            self.assertEqual(await storage.read(path), b"photo")
             self.assertTrue(await storage.delete(path))
             self.assertFalse((Path(tmp) / path).exists())
 
@@ -87,7 +88,7 @@ class S3StorageTests(unittest.IsolatedAsyncioTestCase):
         await self.storage.save(b"photo", "user/photo.jpg", "image/jpeg")
         self.assertEqual(self.client.calls[-1][1]["Key"], "uploads/user/photo.jpg")
 
-        self.assertEqual(await self.storage.read_object("uploads/user/photo.jpg"), b"image")
+        self.assertEqual(await self.storage.read("uploads/user/photo.jpg"), b"image")
         self.assertEqual(self.client.calls[-1][1]["Key"], "uploads/user/photo.jpg")
 
         self.assertTrue(await self.storage.delete("user/photo.jpg"))

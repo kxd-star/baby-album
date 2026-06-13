@@ -15,6 +15,10 @@ class StorageBackend:
         """Delete a stored object. Missing objects count as successfully deleted."""
         raise NotImplementedError
 
+    async def read(self, path: str) -> Optional[bytes]:
+        """Read stored object bytes, or return None when unavailable."""
+        raise NotImplementedError
+
     async def count(self, prefix: str, limit: int | None = None) -> int:
         """Count stored objects below a prefix, stopping once limit is reached."""
         raise NotImplementedError
@@ -66,6 +70,16 @@ class LocalStorage(StorageBackend):
 
         return await asyncio.to_thread(delete_file)
 
+    async def read(self, path: str) -> Optional[bytes]:
+        file_path = (self.upload_dir / path).resolve()
+        upload_dir = self.upload_dir.resolve()
+        if upload_dir not in file_path.parents:
+            return None
+        try:
+            return await asyncio.to_thread(file_path.read_bytes)
+        except OSError:
+            return None
+
     async def count(self, prefix: str, limit: int | None = None) -> int:
         directory = (self.upload_dir / prefix).resolve()
         upload_dir = self.upload_dir.resolve()
@@ -76,11 +90,12 @@ class LocalStorage(StorageBackend):
             if not directory.exists():
                 return 0
             count = 0
-            for entry in os.scandir(directory):
-                if entry.is_file():
-                    count += 1
-                    if limit is not None and count >= limit:
-                        break
+            with os.scandir(directory) as entries:
+                for entry in entries:
+                    if entry.is_file():
+                        count += 1
+                        if limit is not None and count >= limit:
+                            break
             return count
 
         return await asyncio.to_thread(count_files)
@@ -135,6 +150,17 @@ class S3Storage(StorageBackend):
         except Exception:
             return False
 
+    async def read(self, path: str) -> Optional[bytes]:
+        try:
+            resp = await asyncio.to_thread(
+                self.client.get_object,
+                Bucket=self.bucket,
+                Key=self._object_key(path),
+            )
+            return await asyncio.to_thread(resp["Body"].read)
+        except Exception:
+            return None
+
     async def count(self, prefix: str, limit: int | None = None) -> int:
         object_prefix = self._object_key(prefix).rstrip("/") + "/"
 
@@ -177,16 +203,8 @@ class S3Storage(StorageBackend):
             return None
 
     async def read_object(self, path: str) -> Optional[bytes]:
-        """Read object bytes directly from S3 (server-side proxy)."""
-        try:
-            resp = await asyncio.to_thread(
-                self.client.get_object,
-                Bucket=self.bucket,
-                Key=self._object_key(path),
-            )
-            return await asyncio.to_thread(resp["Body"].read)
-        except Exception:
-            return None
+        """Backward-compatible alias for older callers."""
+        return await self.read(path)
 
     def _object_key(self, path: str) -> str:
         clean_path = path.strip().lstrip("/")

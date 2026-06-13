@@ -2,12 +2,14 @@ import asyncio
 import base64
 import hashlib
 import hmac
+import io
 import json
 import mimetypes
 import os
 import re
 import time
 import uuid
+import warnings
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode, urlparse
@@ -18,6 +20,7 @@ from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response
 from pydantic import BaseModel, Field
+from PIL import Image, ImageOps, UnidentifiedImageError
 from starlette.responses import FileResponse
 
 from storage import get_storage
@@ -59,6 +62,15 @@ MAX_REQUEST_BODY_BYTES = int(os.environ.get(
 ))
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
 CAPTION_CONCURRENCY = int(os.environ.get("CAPTION_CONCURRENCY", "4"))
+AI_IMAGE_COMPRESS_THRESHOLD = int(os.environ.get("AI_IMAGE_COMPRESS_THRESHOLD", str(1024 * 1024)))
+AI_IMAGE_MAX_SIDE = int(os.environ.get("AI_IMAGE_MAX_SIDE", "1280"))
+AI_IMAGE_JPEG_QUALITY = int(os.environ.get("AI_IMAGE_JPEG_QUALITY", "82"))
+AI_IMAGE_MAX_PIXELS = int(os.environ.get("AI_IMAGE_MAX_PIXELS", "40000000"))
+AI_IMAGE_CONCURRENCY = int(os.environ.get("AI_IMAGE_CONCURRENCY", "2"))
+VISION_TIMEOUT_SECONDS = float(os.environ.get("VISION_TIMEOUT_SECONDS", "45"))
+TEXT_TIMEOUT_SECONDS = float(os.environ.get("TEXT_TIMEOUT_SECONDS", "45"))
+Image.MAX_IMAGE_PIXELS = AI_IMAGE_MAX_PIXELS
+_ai_image_semaphore = asyncio.Semaphore(max(1, AI_IMAGE_CONCURRENCY))
 APP_ENV = os.environ.get("APP_ENV", "development").strip().lower()
 SESSION_SECRET = os.environ.get("SESSION_SECRET", "dev-only-change-me").encode("utf-8")
 SESSION_COOKIE_NAME = os.environ.get("SESSION_COOKIE_NAME", "baby_album_session")
@@ -368,7 +380,8 @@ async def call_ark_chat(messages: list[dict[str, Any]], *, vision: bool = False)
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     payload = {"model": model, "messages": messages, "temperature": 0.3}
 
-    async with httpx.AsyncClient(timeout=20) as client:
+    timeout = VISION_TIMEOUT_SECONDS if vision else TEXT_TIMEOUT_SECONDS
+    async with httpx.AsyncClient(timeout=timeout) as client:
         resp = await client.post(url, headers=headers, json=payload)
         resp.raise_for_status()
         resp_data = resp.json()
@@ -394,7 +407,7 @@ async def call_minimax_chat(messages: list[dict[str, Any]], vision: bool = False
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     payload = {"model": model, "messages": messages, "temperature": 0.3}
 
-    timeout = 120 if vision else 60
+    timeout = VISION_TIMEOUT_SECONDS if vision else TEXT_TIMEOUT_SECONDS
     async with httpx.AsyncClient(timeout=timeout) as client:
         resp = await client.post(url, headers=headers, json=payload)
         resp.raise_for_status()
@@ -407,35 +420,64 @@ async def call_minimax_chat(messages: list[dict[str, Any]], vision: bool = False
 
 
 async def call_llm(messages: list[dict[str, Any]], vision: bool = False) -> str | None:
-    """Call LLM, preferring MiniMax, falling back to ARK.
-    If vision call fails, auto-retry with text-only."""
-    if get_minimax_config(vision=vision):
+    """Call a text model, preferring MiniMax and falling back to ARK."""
+    if vision:
+        raise ValueError("Vision calls must use call_vision_llm")
+    if get_minimax_config(vision=False):
         try:
-            return await call_minimax_chat(messages, vision=vision)
+            return await call_minimax_chat(messages, vision=False)
         except Exception as e:
-            if vision:
-                print(f"MiniMax vision failed ({repr(e)}), trying text-only...")
-                # Drop image content, keep text only
-                text_only = [
-                    {"role": m["role"], "content": _extract_text_content(m.get("content", ""))}
-                    if isinstance(m.get("content"), list) else m
-                    for m in messages
-                ]
-                try:
-                    return await call_minimax_chat(text_only, vision=False)
-                except Exception as e2:
-                    print(f"MiniMax text also failed ({repr(e2)}), falling back to ARK...")
-            else:
-                print(f"MiniMax text failed ({repr(e)}), falling back to ARK...")
-    return await call_ark_chat(messages, vision=vision)
+            print(f"MiniMax text failed ({repr(e)}), falling back to ARK...")
+    return await call_ark_chat(messages, vision=False)
 
 
-def _extract_text_content(content: list | str) -> str:
-    """Extract text parts from multimodal content array."""
-    if isinstance(content, str):
-        return content
-    texts = [item.get("text", "") for item in content if item.get("type") == "text"]
-    return "\n".join(texts)
+def build_minimax_vision_messages(prompt: str, image_data_uris: list[str]) -> list[dict[str, Any]]:
+    image_tags = "".join(f"[image:{data_uri}]" for data_uri in image_data_uris)
+    return [{"role": "user", "content": f"{image_tags}\n{prompt}"}]
+
+
+def build_ark_vision_messages(prompt: str, image_data_uris: list[str]) -> list[dict[str, Any]]:
+    content: list[dict[str, Any]] = [
+        {"type": "image_url", "image_url": {"url": data_uri}}
+        for data_uri in image_data_uris
+    ]
+    content.append({"type": "text", "text": prompt})
+    return [{"role": "user", "content": content}]
+
+
+async def call_vision_llm(
+    prompt: str,
+    image_data_uris: list[str],
+    *,
+    text_fallback: bool = True,
+) -> str | None:
+    """Call each configured vision provider with its native message format."""
+    if not image_data_uris:
+        if text_fallback:
+            return await call_llm([{"role": "user", "content": prompt}], vision=False)
+        return None
+
+    if get_minimax_config(vision=True):
+        try:
+            return await call_minimax_chat(
+                build_minimax_vision_messages(prompt, image_data_uris),
+                vision=True,
+            )
+        except Exception as e:
+            print(f"MiniMax vision failed ({repr(e)}), falling back to ARK vision...")
+
+    if get_ark_config(vision=True):
+        try:
+            return await call_ark_chat(
+                build_ark_vision_messages(prompt, image_data_uris),
+                vision=True,
+            )
+        except Exception as e:
+            print(f"ARK vision failed ({repr(e)}), falling back to text...")
+
+    if text_fallback:
+        return await call_llm([{"role": "user", "content": prompt}], vision=False)
+    return None
 
 
 def fallback_caption(album_type: str | None = "default") -> str:
@@ -696,6 +738,8 @@ async def serve_upload(
 ):
     if "/" in filename or "\\" in filename or len(user_id) != 32:
         return HTMLResponse("Not Found", status_code=404)
+    if user_id != request.state.user_id and not verify_asset_signature(user_id, filename, expires, signature):
+        return HTMLResponse("Not Found", status_code=404)
 
     storage = _s()
     if storage.mode_name() == "s3":
@@ -710,7 +754,7 @@ async def serve_upload(
                         headers={"Cache-Control": "private, no-store"},
                     )
 
-            data = await storage.read_object(key)
+            data = await storage.read(key)
             if data is not None:
                 return Response(
                     content=data,
@@ -729,44 +773,63 @@ async def serve_upload(
     return FileResponse(file_path, headers={"Cache-Control": "private, no-store"})
 
 
-def _photo_to_data_uri(url: str) -> str | None:
-    """Read a photo from local disk by its URL and return a base64 data URI.
-    This guarantees MiniMax can access the image regardless of network routing."""
-    from urllib.parse import urlparse
-    parsed = urlparse(url)
-    path = parsed.path
-    if not path.startswith("/uploads/"):
-        return None
-    parts = path.strip("/").split("/")
-    if len(parts) != 3 or parts[0] != "uploads":
-        return None
-    _, user_id, filename = parts
-    if "/" in filename or "\\" in filename:
-        return None
+def prepare_ai_image(data: bytes) -> tuple[bytes, str] | None:
+    """Downscale large images for vision calls while preserving uploaded originals."""
+    content_type = sniff_image_content_type(data) or "image/jpeg"
+    if len(data) <= AI_IMAGE_COMPRESS_THRESHOLD:
+        return data, content_type
+
     try:
-        local_path = (UPLOAD_DIR / user_id / filename).resolve()
-        uploads_resolved = UPLOAD_DIR.resolve()
-        if uploads_resolved not in local_path.parents:
-            return None
-        if not local_path.exists() or not local_path.is_file():
-            return None
-        data = local_path.read_bytes()
-        ct = sniff_image_content_type(data) or "image/jpeg"
-        b64 = base64.b64encode(data).decode("utf-8")
-        return f"data:{ct};base64,{b64}"
-    except Exception as e:
-        print(f"_photo_to_data_uri failed: {repr(e)}")
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", Image.DecompressionBombWarning)
+            with Image.open(io.BytesIO(data)) as image:
+                image.load()
+                image = ImageOps.exif_transpose(image)
+                if image.mode != "RGB":
+                    image = image.convert("RGB")
+                image.thumbnail((AI_IMAGE_MAX_SIDE, AI_IMAGE_MAX_SIDE), Image.Resampling.LANCZOS)
+                output = io.BytesIO()
+                image.save(
+                    output,
+                    format="JPEG",
+                    quality=AI_IMAGE_JPEG_QUALITY,
+                    optimize=True,
+                )
+                return output.getvalue(), "image/jpeg"
+    except (
+        Image.DecompressionBombError,
+        Image.DecompressionBombWarning,
+        UnidentifiedImageError,
+        OSError,
+        ValueError,
+    ) as e:
+        print(f"AI image compression failed: {repr(e)}")
         return None
+
+
+async def _photo_to_data_uri(request: Request, url: str) -> str | None:
+    """Read an authorized user photo from local/S3 storage and prepare it for vision."""
+    path = current_user_upload_path(request, url)
+    if not path:
+        return None
+    async with _ai_image_semaphore:
+        data = await _s().read(path)
+        if not data:
+            return None
+        result = await asyncio.to_thread(prepare_ai_image, data)
+    if not result:
+        return None
+    prepared, content_type = result
+    encoded = await asyncio.to_thread(base64.b64encode, prepared)
+    return f"data:{content_type};base64,{encoded.decode('ascii')}"
 
 
 async def generate_caption_for_photo(request: Request, photo: CaptionPhoto, album_type: str | None) -> str:
-    # Resolve to a local path and read image for base64 inline
-    image_b64 = _photo_to_data_uri(photo.url)
-    if not image_b64:
+    image_data_uri = await _photo_to_data_uri(request, photo.url)
+    if not image_data_uri:
         return fallback_caption(album_type)
 
     prompt = (
-        f"[image:{image_b64}]\n"
         "你是一位相册配文师。先理解这张照片：\n"
         "- 场景类型（室内/户外/城市/自然/餐饮/其他）\n"
         "- 人物情况（人数、年龄段、互动关系）\n"
@@ -776,13 +839,8 @@ async def generate_caption_for_photo(request: Request, photo: CaptionPhoto, albu
         "突出温馨、自然、有纪念意义的感觉。\n"
         "不要描述画面细节，不要编造具体身份，只输出配文本句。"
     )
-    messages = [{
-        "role": "user",
-        "content": prompt,
-    }]
-
     try:
-        content = await call_llm(messages, vision=True)
+        content = await call_vision_llm(prompt, [image_data_uri], text_fallback=False)
         caption = (content or "").strip().strip("\"'“”")
         if caption:
             return caption[:40]
@@ -849,7 +907,7 @@ async def generate_storyline(request: Request, data: StorylineRequest):
 photo_ids 必须只使用输入中出现过的 id，且每张照片必须且只能出现一次。"""
 
     # Include up to 3 representative photo thumbnails for visual context (base64 inline)
-    photo_data_uris = []
+    representative_urls = []
     if photos:
         indices = [0]
         if len(photos) >= 3:
@@ -858,16 +916,18 @@ photo_ids 必须只使用输入中出现过的 id，且每张照片必须且只�
         for idx in indices:
             url = getattr(photos[idx], 'url', None) or getattr(photos[idx], 'src', None)
             if url:
-                b64 = _photo_to_data_uri(str(url))
-                if b64:
-                    photo_data_uris.append(b64)
+                representative_urls.append(str(url))
+    loaded_images = await asyncio.gather(
+        *(_photo_to_data_uri(request, url) for url in representative_urls),
+        return_exceptions=True,
+    )
+    photo_data_uris = [image for image in loaded_images if isinstance(image, str)]
 
     try:
-        text = prompt
         if photo_data_uris:
-            img_tags = "".join(f"[image:{b64}]" for b64 in photo_data_uris)
-            text = img_tags + "\n" + prompt
-        content = await call_llm([{"role": "user", "content": text}], vision=bool(photo_data_uris))
+            content = await call_vision_llm(prompt, photo_data_uris)
+        else:
+            content = await call_llm([{"role": "user", "content": prompt}], vision=False)
         if content:
             result = safe_json_from_text(content)
             chapters = normalize_storyline_chapters(
@@ -891,12 +951,16 @@ async def recommend(request: Request, data: RecommendRequest):
     captions = data.captions[:30]
     photos = data.photos[:30]
 
-    photo_data_uris = []
+    photo_urls = []
     for photo in photos[:3]:
         raw_url = photo.get("src") if isinstance(photo, dict) else photo
-        b64 = _photo_to_data_uri(str(raw_url or ""))
-        if b64:
-            photo_data_uris.append(b64)
+        if raw_url:
+            photo_urls.append(str(raw_url))
+    loaded_images = await asyncio.gather(
+        *(_photo_to_data_uri(request, url) for url in photo_urls),
+        return_exceptions=True,
+    )
+    photo_data_uris = [image for image in loaded_images if isinstance(image, str)]
 
     prompt = f"""你是一个高级的相册主题搭配师。
 当前相册类型: {album_type}
@@ -923,8 +987,7 @@ async def recommend(request: Request, data: RecommendRequest):
     content: str | None = None
     try:
         if photo_data_uris:
-            img_tags = "".join(f"[image:{b64}]" for b64 in photo_data_uris)
-            content = await call_llm([{"role": "user", "content": img_tags + "\n" + prompt}], vision=True)
+            content = await call_vision_llm(prompt, photo_data_uris)
         if not content:
             content = await call_llm([{"role": "user", "content": prompt}], vision=False)
         if not content:
