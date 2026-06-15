@@ -236,12 +236,6 @@ def make_public_url(request: Request, path: str) -> str:
 def storage_mode() -> str:
     return _s().mode_name()
 
-def storage_key(user_id: str, filename: str) -> str:
-    key_prefix = os.environ.get("S3_KEY_PREFIX", "uploads").strip().strip("/")
-    relative_key = f"{user_id}/{filename}"
-    return f"{key_prefix}/{relative_key}" if key_prefix else relative_key
-
-
 def create_asset_signature(user_id: str, filename: str, expires: int) -> str:
     return sign_value(f"asset.{user_id}.{filename}.{expires}")
 
@@ -486,6 +480,45 @@ def fallback_caption(album_type: str | None = "default") -> str:
     if album_type == "wedding":
         return "浪漫而珍贵的幸福时刻"
     return "值得珍藏的美好瞬间"
+
+
+def get_local_recommendation(
+    album_type: str,
+    themes: list[dict[str, Any]],
+    tracks: list[dict[str, Any]],
+) -> dict[str, str]:
+    theme_ids = {
+        str(theme.get("id", ""))
+        for theme in themes
+        if isinstance(theme, dict) and theme.get("id")
+    }
+    track_srcs = {
+        str(track.get("src", ""))
+        for track in tracks
+        if isinstance(track, dict) and track.get("src")
+    }
+    preferences = {
+        "baby": (
+            ["moonlight-baby", "cream-baby", "baby-blue", "classic"],
+            ["assets/bgm_3.mp3", "assets/bgm_2.mp3", "assets/bgm.mp3"],
+        ),
+        "wedding": (
+            ["romantic-wedding", "dark-gold", "celebration", "classic"],
+            ["assets/bgm.mp3", "assets/bgm_2.mp3", "assets/bgm_3.mp3"],
+        ),
+        "default": (
+            ["editorial", "gallery", "classic", "polaroid"],
+            ["assets/bgm_3.mp3", "assets/bgm_2.mp3", "assets/bgm.mp3"],
+        ),
+    }
+    preferred_themes, preferred_tracks = preferences.get(album_type, preferences["default"])
+    theme_id = next((item for item in preferred_themes if item in theme_ids), "")
+    track_src = next((item for item in preferred_tracks if item in track_srcs), "")
+    if not theme_id and theme_ids:
+        theme_id = next(iter(theme_ids))
+    if not track_src and track_srcs:
+        track_src = next(iter(track_srcs))
+    return {"themeId": theme_id, "trackSrc": track_src, "source": "fallback"}
 
 
 def storyline_templates(album_type: str | None = "default") -> list[dict[str, str]]:
@@ -735,6 +768,7 @@ async def serve_upload(
     filename: str,
     expires: int | None = None,
     signature: str | None = None,
+    proxy: bool = False,
 ):
     if "/" in filename or "\\" in filename or len(user_id) != 32:
         return HTMLResponse("Not Found", status_code=404)
@@ -744,8 +778,8 @@ async def serve_upload(
     storage = _s()
     if storage.mode_name() == "s3":
         try:
-            key = storage_key(user_id, filename)
-            if S3_PRESIGNED_READ:
+            key = f"{user_id}/{filename}"
+            if S3_PRESIGNED_READ and not proxy:
                 url = storage.get_presigned_url(key, SIGNED_ASSET_TTL)
                 if url:
                     return RedirectResponse(
@@ -950,6 +984,7 @@ async def recommend(request: Request, data: RecommendRequest):
     title = (data.title or "")[:200]
     captions = data.captions[:30]
     photos = data.photos[:30]
+    local_recommendation = get_local_recommendation(album_type, themes, tracks)
 
     photo_urls = []
     for photo in photos[:3]:
@@ -991,7 +1026,7 @@ async def recommend(request: Request, data: RecommendRequest):
         if not content:
             content = await call_llm([{"role": "user", "content": prompt}], vision=False)
         if not content:
-            return JSONResponse({"themeId": "", "trackSrc": ""})
+            return JSONResponse(local_recommendation)
 
         result = safe_json_from_text(content)
         theme_ids = {str(t.get("id", "")) for t in themes if isinstance(t, dict)}
@@ -999,12 +1034,13 @@ async def recommend(request: Request, data: RecommendRequest):
         theme_id = result.get("themeId", "")
         track_src = result.get("trackSrc", "")
         return JSONResponse({
-            "themeId": theme_id if theme_id in theme_ids else "",
-            "trackSrc": track_src if track_src in track_srcs else "",
+            "themeId": theme_id if theme_id in theme_ids else local_recommendation["themeId"],
+            "trackSrc": track_src if track_src in track_srcs else local_recommendation["trackSrc"],
+            "source": "ai" if theme_id in theme_ids and track_src in track_srcs else "fallback",
         })
     except Exception as e:
         print("LLM Call failed:", repr(e))
-        return JSONResponse({"themeId": "", "trackSrc": ""})
+        return JSONResponse(local_recommendation)
 
 
 @app.get("/api/health")

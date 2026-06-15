@@ -43,16 +43,23 @@ class MemoryStorage:
         return None
 
 
+class PresignedMemoryStorage(MemoryStorage):
+    def get_presigned_url(self, path, ttl=600):
+        return "https://storage.example/signed-photo"
+
+
 class CloudVisionTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self.previous_storage = serve._storage
         self.previous_upload_dir = serve.UPLOAD_DIR
         self.previous_call_vision = serve.call_vision_llm
+        self.previous_call_llm = serve.call_llm
 
     def tearDown(self):
         serve._storage = self.previous_storage
         serve.UPLOAD_DIR = self.previous_upload_dir
         serve.call_vision_llm = self.previous_call_vision
+        serve.call_llm = self.previous_call_llm
 
     async def test_photo_data_uri_reads_s3_and_checks_owner(self):
         storage = MemoryStorage()
@@ -93,6 +100,7 @@ class UserIsolationTests(unittest.TestCase):
         self.previous_storage = serve._storage
         self.previous_upload_dir = serve.UPLOAD_DIR
         self.previous_call_vision = serve.call_vision_llm
+        self.previous_call_llm = serve.call_llm
         self.temp_dir = tempfile.TemporaryDirectory()
         serve.UPLOAD_DIR = Path(self.temp_dir.name)
         serve._storage = LocalStorage(serve.UPLOAD_DIR)
@@ -101,6 +109,7 @@ class UserIsolationTests(unittest.TestCase):
         serve._storage = self.previous_storage
         serve.UPLOAD_DIR = self.previous_upload_dir
         serve.call_vision_llm = self.previous_call_vision
+        serve.call_llm = self.previous_call_llm
         self.temp_dir.cleanup()
 
     def test_other_user_cannot_read_or_caption_photo(self):
@@ -182,6 +191,91 @@ class UserIsolationTests(unittest.TestCase):
         self.assertEqual(recommendation.json()["themeId"], "classic")
         self.assertEqual(len(calls), 3)
         self.assertTrue(all(call[0].startswith("data:image/png;base64,") for call in calls))
+
+    def test_recommendation_falls_back_to_valid_theme_and_track(self):
+        async def empty_llm(*args, **kwargs):
+            return None
+
+        serve.call_llm = empty_llm
+        client = TestClient(serve.app)
+        response = client.post(
+            "/api/recommend",
+            json={
+                "albumType": "default",
+                "title": "test",
+                "captions": [],
+                "photos": [],
+                "themes": [{"id": "classic"}, {"id": "editorial"}],
+                "tracks": [{"src": "assets/bgm.mp3"}, {"src": "assets/bgm_3.mp3"}],
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {
+            "themeId": "editorial",
+            "trackSrc": "assets/bgm_3.mp3",
+            "source": "fallback",
+        })
+
+    def test_invalid_ai_recommendation_is_replaced(self):
+        async def invalid_llm(*args, **kwargs):
+            return '{"themeId":"missing","trackSrc":"missing.mp3"}'
+
+        serve.call_llm = invalid_llm
+        client = TestClient(serve.app)
+        response = client.post(
+            "/api/recommend",
+            json={
+                "albumType": "baby",
+                "title": "test",
+                "captions": [],
+                "photos": [],
+                "themes": [{"id": "classic"}, {"id": "moonlight-baby"}],
+                "tracks": [{"src": "assets/bgm.mp3"}, {"src": "assets/bgm_3.mp3"}],
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {
+            "themeId": "moonlight-baby",
+            "trackSrc": "assets/bgm_3.mp3",
+            "source": "fallback",
+        })
+
+    def test_cloud_bundle_contains_playable_music_and_demo_image(self):
+        client = TestClient(serve.app)
+        image = client.get("/assets/opt/photo_1.webp")
+
+        for path in (
+            "/assets/bgm.mp3",
+            "/assets/bgm_2.mp3",
+            "/assets/bgm_3.mp3",
+            "/assets/music/cinematic.mp3",
+            "/assets/music/lullaby.mp3",
+            "/assets/music/travel_upbeat.mp3",
+        ):
+            music = client.get(path)
+            self.assertEqual(music.status_code, 200)
+            self.assertGreater(len(music.content), 100_000)
+            self.assertNotIn(b"<Error>", music.content[:500])
+            self.assertNotIn(b"<!DOCTYPE html", music.content[:500])
+        self.assertEqual(image.status_code, 200)
+        self.assertTrue(image.content.startswith(b"RIFF"))
+
+    def test_s3_photo_proxy_avoids_cross_origin_redirect(self):
+        serve._storage = PresignedMemoryStorage()
+        client = TestClient(serve.app, follow_redirects=False)
+        upload = client.post(
+            "/api/upload",
+            files={"files": ("photo.png", make_png(), "image/png")},
+            data={"photo_ids": "photo12345678"},
+        )
+        path = "/" + upload.json()["photos"][0]["url"].split("/", 3)[3]
+
+        self.assertEqual(client.get(path).status_code, 307)
+        proxied = client.get(f"{path}?proxy=1")
+        self.assertEqual(proxied.status_code, 200)
+        self.assertTrue(proxied.content.startswith(b"\x89PNG"))
 
 
 if __name__ == "__main__":
