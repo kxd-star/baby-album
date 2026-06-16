@@ -44,7 +44,10 @@ class LocalStorage(StorageBackend):
         self.upload_dir = upload_dir
 
     async def save(self, data: bytes, path: str, content_type: str = "") -> str:
-        file_path = self.upload_dir / path
+        file_path = (self.upload_dir / path).resolve()
+        upload_dir = self.upload_dir.resolve()
+        if upload_dir not in file_path.parents:
+            raise ValueError("Path traversal detected")
         await asyncio.to_thread(file_path.parent.mkdir, parents=True, exist_ok=True)
         await asyncio.to_thread(file_path.write_bytes, data)
         return f"/uploads/{path}"
