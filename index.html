@@ -616,6 +616,122 @@
     @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-20px); } }
     .upload-title { font-size: 2.2rem; color: var(--cover-bg); margin-bottom: 15px; font-weight: 900; font-family: var(--font-display); }
     .upload-hint { font-size: 1.1rem; color: #666; margin-bottom: 40px; }
+    .album-type-selector {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      margin: 0 0 18px;
+    }
+    .album-type-option {
+      border: 1px solid rgba(0,0,0,0.08);
+      border-radius: 8px;
+      background: rgba(255,255,255,0.68);
+      color: var(--text);
+      padding: 12px 10px;
+      font-weight: 900;
+      cursor: pointer;
+      transition: transform 0.2s, border-color 0.2s, background 0.2s;
+    }
+    .album-type-option:hover { transform: translateY(-2px); border-color: var(--accent); }
+    .album-type-option.active {
+      background: color-mix(in srgb, var(--cover-bg) 14%, white);
+      border-color: var(--cover-bg);
+      box-shadow: 0 6px 14px var(--shadow);
+    }
+    .upload-limits {
+      font-size: 0.78rem;
+      line-height: 1.6;
+      color: #777;
+      margin: -24px 0 22px;
+    }
+    .selection-preview {
+      margin: 18px 0 0;
+      text-align: left;
+      border-top: 1px solid rgba(0,0,0,0.08);
+      padding-top: 16px;
+    }
+    .selection-meta {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      color: #555;
+      font-size: 0.86rem;
+      font-weight: 800;
+      margin-bottom: 12px;
+    }
+    .selected-photo-grid {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 8px;
+      max-height: 168px;
+      overflow: auto;
+      padding-right: 4px;
+    }
+    .selected-photo-item {
+      position: relative;
+      aspect-ratio: 1;
+      border-radius: 8px;
+      overflow: hidden;
+      background: rgba(0,0,0,0.06);
+    }
+    .selected-photo-item img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .selected-photo-remove {
+      position: absolute;
+      top: 4px;
+      right: 4px;
+      width: 22px;
+      height: 22px;
+      border: none;
+      border-radius: 50%;
+      background: rgba(0,0,0,0.62);
+      color: #fff;
+      cursor: pointer;
+      line-height: 22px;
+      font-size: 13px;
+    }
+    .selection-actions,
+    .upload-recovery-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 14px;
+    }
+    .secondary-upload-btn {
+      padding: 14px 18px;
+      border-radius: 999px;
+      border: 1px solid rgba(0,0,0,0.1);
+      background: rgba(255,255,255,0.74);
+      color: var(--text);
+      font-weight: 900;
+      cursor: pointer;
+    }
+    .ai-recommendation-toast {
+      position: fixed;
+      left: 50%;
+      bottom: 24px;
+      transform: translate(-50%, 20px);
+      opacity: 0;
+      pointer-events: none;
+      z-index: 10001;
+      max-width: min(92vw, 520px);
+      padding: 14px 18px;
+      border-radius: 8px;
+      background: rgba(255,255,255,0.94);
+      color: #333;
+      box-shadow: 0 16px 40px rgba(0,0,0,0.18);
+      font-size: 0.92rem;
+      line-height: 1.5;
+      transition: opacity 0.25s, transform 0.25s;
+    }
+    .ai-recommendation-toast.show {
+      opacity: 1;
+      transform: translate(-50%, 0);
+    }
     .upload-btn {
       padding: 20px 60px; background: linear-gradient(135deg, var(--cover-bg), var(--accent));
       color: white; border: none; border-radius: 100px; font-size: 1.3rem; font-weight: bold;
@@ -650,6 +766,9 @@
       .cover-title { font-size: 1.8rem; }
       .upload-title { font-size: 1.6rem; }
       .upload-box { padding: 40px 20px; }
+      .album-type-selector { grid-template-columns: 1fr; }
+      .selected-photo-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+      .selection-actions, .upload-recovery-actions { grid-template-columns: 1fr; }
       .top-bar { top: 10px; right: 10px; gap: 8px; }
       .icon-btn { width: 40px; height: 40px; font-size: 18px; }
       #editorPanel { width: calc(100% - 20px); right: 10px; top: 60px; padding: 16px; }
@@ -933,6 +1052,7 @@
       <div class="progress-text" id="progressText">0%</div>
     </div>
   </div>
+  <div id="recommendationToast" class="ai-recommendation-toast" aria-live="polite"></div>
 
   <div id="storylineModal" class="hidden">
     <div class="storyline-panel">
@@ -940,7 +1060,7 @@
         <div>
           <div class="storyline-kicker">AI Storyline</div>
           <div class="storyline-heading">AI 为你规划了故事线</div>
-          <div class="storyline-note">可以直接改章节标题，确认后再推荐主题和音乐。</div>
+          <div class="storyline-note" id="storylineNote">可以直接改章节标题，确认后再推荐主题和音乐。</div>
         </div>
       </div>
       <div id="storylineList" class="storyline-list"></div>
@@ -1018,8 +1138,29 @@
         <div class="upload-icon">📸</div>
         <h2 class="upload-title">创作您的专属动态相册</h2>
         <p class="upload-hint">上传照片，AI 将为您智能生成精美背景、温馨配乐与动人配文。</p>
+        <div class="album-type-selector" id="albumTypeSelector" aria-label="选择相册类型">
+          <button type="button" class="album-type-option active" data-album-type="default">🏡 家庭回忆</button>
+          <button type="button" class="album-type-option" data-album-type="baby">🍼 宝宝成长</button>
+          <button type="button" class="album-type-option" data-album-type="wedding">💍 婚礼爱情</button>
+        </div>
+        <div class="upload-limits">最多 30 张，单张不超过 20MB，支持 JPG / PNG / WebP / GIF</div>
         <input type="file" id="photoUpload" multiple accept="image/*" class="hidden">
-        <button class="upload-btn" id="startBtn">立即开启创作</button>
+        <button class="upload-btn" id="startBtn">选择照片</button>
+        <div id="selectionPreview" class="selection-preview hidden">
+          <div class="selection-meta">
+            <span id="selectionCount">已选 0 张</span>
+            <span id="selectionSize">0MB</span>
+          </div>
+          <div id="selectedPhotoGrid" class="selected-photo-grid"></div>
+          <div class="selection-actions">
+            <button type="button" class="secondary-upload-btn" id="clearSelectionBtn">重新选择</button>
+            <button type="button" class="upload-btn" id="confirmUploadBtn">开始制作</button>
+          </div>
+        </div>
+        <div id="uploadRecoveryActions" class="upload-recovery-actions hidden">
+          <button type="button" class="secondary-upload-btn" id="retryFailedBtn">重试失败照片</button>
+          <button type="button" class="upload-btn" id="continueUploadedBtn">继续制作已上传</button>
+        </div>
         <p id="uploadStatus" class="upload-status" aria-live="polite"></p>
       </div>
     </div>
@@ -1130,7 +1271,15 @@
       const MAX_FILE_BYTES = 20 * 1024 * 1024;
       const UPLOAD_BATCH_SIZE = 3;
       const CAPTION_BATCH_SIZE = 4;
+      const CAPTION_ERROR_TEXT = '暂未生成配文';
       let uploadInProgress = false;
+      let selectedUploadFiles = [];
+      let selectedPreviewUrls = [];
+      let selectedUploadAlbumType = 'default';
+      let pendingUploadedPhotos = [];
+      let pendingFailedFiles = [];
+      let recommendationToastTimer = null;
+      let currentStorylineSource = 'fallback';
 
       function apiUrl(path) {
         const normalizedPath = String(path || '').startsWith('/') ? String(path) : `/${path}`;
@@ -1293,7 +1442,8 @@
           .map(photo => ({
             id: photo.id || '',
             src: photo.src,
-            caption: photo.caption || ''
+            caption: photo.caption || '',
+            captionSource: photo.captionSource || 'fallback'
           }));
 
         if (persistedPhotos.length === 0) return false;
@@ -1325,7 +1475,8 @@
           const photos = data.photos.map(photo => ({
             id: photo.id || '',
             src: photo.src,
-            caption: photo.caption || '值得珍藏的美好瞬间',
+            caption: photo.caption || '',
+            captionSource: photo.captionSource || (photo.caption ? 'fallback' : 'error'),
             persisted: true
           }));
           const chapters = sanitizeChaptersForStorage(data.chapters, photos.map(photo => photo.id).filter(Boolean));
@@ -1360,7 +1511,7 @@
         if (!list) return;
         const saved = loadUploadedAlbum();
         if (!saved) {
-          list.innerHTML = '<div class="history-empty" style="padding:20px;text-align:center;color:#999;font-size:0.85rem;">暂无已保存的相册，完成创作后自动显示在这里</div>';
+          list.innerHTML = '<div class="history-empty" style="padding:20px;text-align:center;color:#999;font-size:0.85rem;">还没有相册，上传照片开始制作你的第一本 AI 相册吧</div>';
           return;
         }
         const title = String(saved.title || '我们的回忆录').replace(/<br\s*\/?>/gi, ' ');
@@ -1446,10 +1597,21 @@
       const progressTitle = document.getElementById('progressTitle');
       const appShell = document.getElementById('appShell');
       const loadingOverlay = document.getElementById('loadingOverlay');
+      const recommendationToast = document.getElementById('recommendationToast');
       const startBtn = document.getElementById('startBtn');
       const photoUpload = document.getElementById('photoUpload');
       const uploadStatus = document.getElementById('uploadStatus');
       const uploadContainer = document.getElementById('uploadContainer');
+      const albumTypeSelector = document.getElementById('albumTypeSelector');
+      const selectionPreview = document.getElementById('selectionPreview');
+      const selectionCount = document.getElementById('selectionCount');
+      const selectionSize = document.getElementById('selectionSize');
+      const selectedPhotoGrid = document.getElementById('selectedPhotoGrid');
+      const clearSelectionBtn = document.getElementById('clearSelectionBtn');
+      const confirmUploadBtn = document.getElementById('confirmUploadBtn');
+      const uploadRecoveryActions = document.getElementById('uploadRecoveryActions');
+      const retryFailedBtn = document.getElementById('retryFailedBtn');
+      const continueUploadedBtn = document.getElementById('continueUploadedBtn');
       const albumMain = document.getElementById('albumMain');
       const albumFooter = document.getElementById('albumFooter');
       const editorBtn = document.getElementById('editorBtn');
@@ -1464,6 +1626,7 @@
       const book = document.getElementById('book');
       const storylineModal = document.getElementById('storylineModal');
       const storylineList = document.getElementById('storylineList');
+      const storylineNote = document.getElementById('storylineNote');
       const regenerateStorylineBtn = document.getElementById('regenerateStorylineBtn');
       const confirmStorylineBtn = document.getElementById('confirmStorylineBtn');
 
@@ -1612,6 +1775,91 @@
         return `${Math.ceil(bytes / (1024 * 1024))}MB`;
       }
 
+      function totalFileSize(files) {
+        return files.reduce((sum, file) => sum + file.size, 0);
+      }
+
+      function releaseSelectedPreviewUrls() {
+        selectedPreviewUrls.forEach(url => URL.revokeObjectURL(url));
+        selectedPreviewUrls = [];
+      }
+
+      function validateSelectedFiles(files) {
+        if (files.length > MAX_ALBUM_FILES) {
+          return `一次最多选择 ${MAX_ALBUM_FILES} 张照片。`;
+        }
+        const oversized = files.find(file => file.size > MAX_FILE_BYTES);
+        if (oversized) {
+          return `“${oversized.name}”为 ${formatFileSize(oversized.size)}，单张照片不能超过 20MB。`;
+        }
+        return '';
+      }
+
+      function renderAlbumTypeSelector() {
+        if (!albumTypeSelector) return;
+        albumTypeSelector.querySelectorAll('.album-type-option').forEach(btn => {
+          btn.classList.toggle('active', btn.dataset.albumType === selectedUploadAlbumType);
+        });
+      }
+
+      function renderSelectedPhotoPreview() {
+        if (!selectionPreview || !selectedPhotoGrid) return;
+        releaseSelectedPreviewUrls();
+        uploadRecoveryActions?.classList.add('hidden');
+
+        if (selectedUploadFiles.length === 0) {
+          selectionPreview.classList.add('hidden');
+          selectedPhotoGrid.innerHTML = '';
+          startBtn.textContent = '选择照片';
+          return;
+        }
+
+        selectionPreview.classList.remove('hidden');
+        startBtn.textContent = '重新选择照片';
+        selectionCount.textContent = `已选 ${selectedUploadFiles.length} 张`;
+        selectionSize.textContent = `共 ${formatFileSize(totalFileSize(selectedUploadFiles))}`;
+        selectedPhotoGrid.innerHTML = '';
+
+        selectedUploadFiles.forEach((file, index) => {
+          const url = URL.createObjectURL(file);
+          selectedPreviewUrls.push(url);
+          const item = document.createElement('div');
+          item.className = 'selected-photo-item';
+          item.innerHTML = `
+            <img src="${url}" alt="">
+            <button type="button" class="selected-photo-remove" aria-label="移除这张照片">×</button>
+          `;
+          item.querySelector('button').onclick = () => {
+            selectedUploadFiles.splice(index, 1);
+            const validation = validateSelectedFiles(selectedUploadFiles);
+            showUploadStatus(validation || `已选择 ${selectedUploadFiles.length} 张照片，确认后开始上传。`, validation ? 'error' : '');
+            renderSelectedPhotoPreview();
+          };
+          selectedPhotoGrid.appendChild(item);
+        });
+      }
+
+      function clearSelectedFiles() {
+        selectedUploadFiles = [];
+        pendingUploadedPhotos = [];
+        pendingFailedFiles = [];
+        releaseSelectedPreviewUrls();
+        selectionPreview?.classList.add('hidden');
+        uploadRecoveryActions?.classList.add('hidden');
+        photoUpload.value = '';
+        startBtn.textContent = '选择照片';
+        showUploadStatus('');
+      }
+
+      function setUploadControlsDisabled(disabled) {
+        startBtn.disabled = disabled;
+        if (confirmUploadBtn) confirmUploadBtn.disabled = disabled;
+        if (clearSelectionBtn) clearSelectionBtn.disabled = disabled;
+        if (retryFailedBtn) retryFailedBtn.disabled = disabled;
+        if (continueUploadedBtn) continueUploadedBtn.disabled = disabled;
+        albumTypeSelector?.querySelectorAll('button').forEach(btn => { btn.disabled = disabled; });
+      }
+
       async function preloadUrl(url) {
         if (!url) return;
         const res = await fetch(url, { cache: 'force-cache' });
@@ -1701,17 +1949,18 @@
 
       async function uploadFilesToServer(files, onProgress) {
         const uploaded = [];
-        try {
-          for (let offset = 0; offset < files.length; offset += UPLOAD_BATCH_SIZE) {
-            const batch = files.slice(offset, offset + UPLOAD_BATCH_SIZE);
-            const batchIds = batch.map(() => createUploadPhotoId());
-            const formData = new FormData();
-            batch.forEach((file, index) => {
-              formData.append('files', file);
-              formData.append('photo_ids', batchIds[index]);
-            });
-            const batchBytes = batch.reduce((sum, file) => sum + file.size, 0);
-            const timeoutMs = Math.min(180000, Math.max(60000, Math.ceil(batchBytes / (512 * 1024)) * 1000 + 30000));
+        for (let offset = 0; offset < files.length; offset += UPLOAD_BATCH_SIZE) {
+          const batch = files.slice(offset, offset + UPLOAD_BATCH_SIZE);
+          const batchIds = batch.map(() => createUploadPhotoId());
+          const formData = new FormData();
+          batch.forEach((file, index) => {
+            formData.append('files', file);
+            formData.append('photo_ids', batchIds[index]);
+          });
+          const batchBytes = batch.reduce((sum, file) => sum + file.size, 0);
+          const timeoutMs = Math.min(180000, Math.max(60000, Math.ceil(batchBytes / (512 * 1024)) * 1000 + 30000));
+
+          try {
             const data = await fetchJsonWithTimeout(apiUrl('/api/upload'), {
               method: 'POST',
               body: formData
@@ -1726,23 +1975,25 @@
               filename: photo.filename,
               src: photo.url,
               caption: '',
+              captionSource: 'pending',
               persisted: true
             })));
-            onProgress?.(uploaded.length, files.length, '');
+            onProgress?.(uploaded.length, files.length, `第 ${Math.floor(offset / UPLOAD_BATCH_SIZE) + 1} 批完成`);
+          } catch (error) {
+            error.uploaded = uploaded;
+            error.failedFiles = files.slice(offset);
+            error.failedOffset = offset;
+            throw error;
           }
-          return uploaded;
-        } catch (error) {
-          // Server guarantees per-batch atomicity: on failure, all files in the
-          // failed batch are rolled back. Clean up only what was persisted.
-          await deleteUploadedPhotos(uploaded);
-          throw error;
         }
+        return uploaded;
       }
 
       async function requestAICaptions(photos, { albumType, title, fallbackCaptions, onProgress }) {
         const result = photos.map((photo, i) => ({
           ...photo,
-          caption: fallbackCaptions[i] || '值得珍藏的美好瞬间'
+          caption: fallbackCaptions[i] || '值得珍藏的美好瞬间',
+          captionSource: 'fallback'
         }));
 
         for (let offset = 0; offset < photos.length; offset += CAPTION_BATCH_SIZE) {
@@ -1758,9 +2009,16 @@
               })
             }, 100000);
             const captions = Array.isArray(data.captions) ? data.captions : [];
-            const byId = new Map(captions.map(item => [item.id, item.caption]));
+            const byId = new Map(captions.map(item => [item.id, item]));
             batch.forEach((photo, i) => {
-              result[offset + i].caption = byId.get(photo.id) || captions[i]?.caption || result[offset + i].caption;
+              const item = byId.get(photo.id) || captions[i] || {};
+              const source = item.source || item.captionSource || 'fallback';
+              result[offset + i].captionSource = source;
+              if (source === 'error') {
+                result[offset + i].caption = '';
+              } else {
+                result[offset + i].caption = item.caption || result[offset + i].caption;
+              }
             });
           } catch (captionError) {
             console.info('[Caption] batch unavailable; using local captions.', captionError);
@@ -1904,6 +2162,7 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         }, 150000);
+        currentStorylineSource = data.source || 'fallback';
         return normalizeStoryline(data.chapters, photos, albumType);
       }
 
@@ -2009,6 +2268,11 @@
           regenerateStorylineBtn.textContent = '重新生成';
           confirmStorylineBtn.disabled = false;
           render();
+          if (storylineNote) {
+            storylineNote.textContent = currentStorylineSource === 'ai'
+              ? 'AI 已根据照片内容规划章节，可以直接改标题。'
+              : '已根据照片数量自动分组，可以直接改标题。';
+          }
           storylineModal.classList.remove('hidden');
 
           regenerateStorylineBtn.onclick = async () => {
@@ -2020,8 +2284,14 @@
             } catch (e) {
               console.info('[Storyline] regenerate unavailable; using local storyline.', e);
               chapters = buildFallbackStoryline(photos, albumType);
+              currentStorylineSource = 'fallback';
             } finally {
               render();
+              if (storylineNote) {
+                storylineNote.textContent = currentStorylineSource === 'ai'
+                  ? 'AI 已重新规划故事线，可以继续微调。'
+                  : '已根据照片数量自动分组，可以继续微调。';
+              }
               regenerateStorylineBtn.disabled = false;
               confirmStorylineBtn.disabled = false;
               regenerateStorylineBtn.textContent = '重新生成';
@@ -2217,12 +2487,15 @@
       }
 
       function buildPhotoSide(photo, fallbackCaption) {
+        const captionText = photo.captionSource === 'error'
+          ? CAPTION_ERROR_TEXT
+          : (photo.caption || fallbackCaption);
         return {
           className: '',
           content: `
             <div class="content-box">
               ${buildPhotoMarkup(photo)}
-              <div class="caption">${escapeHtml(photo.caption || fallbackCaption)}</div>
+              <div class="caption">${escapeHtml(captionText)}</div>
             </div>
           `
         };
@@ -2364,6 +2637,38 @@
       }
 
       // ---- LLM 驱动的 Theme/BGM 推荐（完全可选的外部能力钩子） ----
+
+      function buildRecommendationReason(theme, track, source) {
+        if (!theme || !track) return '';
+        if (source === 'fallback') {
+          return `已为你选择默认风格，${track.energy === '高' ? '让相册更明快' : '让翻看节奏更温柔'}。`;
+        }
+        const sceneText = Array.isArray(theme.scenes) ? theme.scenes.join('、') : '';
+        const moodText = `${theme.mood || ''} ${track.mood || ''}`;
+        if (/宝宝|儿童|亲子|成长/.test(sceneText + moodText)) {
+          return '因为照片带有亲子与成长氛围，选择了更柔和的主题和音乐。';
+        }
+        if (/婚礼|情侣|周年|浪漫|仪式/.test(sceneText + moodText)) {
+          return '因为照片呈现浪漫和仪式感，选择了更典雅的视觉与配乐。';
+        }
+        if (/户外|森林|自然|旅行|海边/.test(sceneText + moodText)) {
+          return '因为照片多带有户外或旅行气息，选择了更清新的相册风格。';
+        }
+        if (/城市|写真|画廊|建筑|艺术/.test(sceneText + moodText)) {
+          return '因为照片更适合克制的视觉表达，选择了偏杂志感的呈现。';
+        }
+        return '根据照片氛围、主题标签和音乐节奏，为你匹配了这一组风格。';
+      }
+
+      function showRecommendationNotice(theme, track, source) {
+        if (!recommendationToast || !theme || !track) return;
+        const label = source === 'ai' ? 'AI 已为你匹配' : '已为你选择默认风格';
+        const reason = buildRecommendationReason(theme, track, source);
+        recommendationToast.innerHTML = `<strong>${escapeHtml(label)}：${escapeHtml(theme.name)} · ${escapeHtml(track.name)}</strong><br>${escapeHtml(reason)}`;
+        recommendationToast.classList.add('show');
+        clearTimeout(recommendationToastTimer);
+        recommendationToastTimer = setTimeout(() => recommendationToast.classList.remove('show'), 5200);
+      }
       
       function getLocalRecommendation(albumType) {
         if (albumType === 'baby') {
@@ -2448,6 +2753,7 @@
           if (!result || typeof result !== 'object') return;
 
           const { themeId, trackSrc } = result;
+          const resultSource = result.source === 'ai' ? 'ai' : 'fallback';
 
           if (themeId && themes.some(t => t.id === themeId)) {
             recommendedThemeId = themeId;
@@ -2467,6 +2773,11 @@
           saveSettings();
           renderThemes();
           renderMusic();
+          showRecommendationNotice(
+            themes.find(t => t.id === currentTheme),
+            tracks.find(t => t.src === currentTrack),
+            resultSource
+          );
         } catch (e) {
           console.warn('[LLM] recommendation error', e);
         }
@@ -2697,6 +3008,143 @@
         }
       }
 
+      async function continueAlbumFlow(photoData, effectiveAlbumType) {
+        const albumTitle = "我们的<br>回忆录";
+        const plainTitle = "我们的回忆录";
+        const fallbackCaptions = getCaptions(effectiveAlbumType, photoData.length);
+        let chapters = [];
+
+        showUploadStatus(`${photoData.length} 张照片已安全保存到云端。`, 'success');
+        setProgress(45, '☁️ 上传完成，正在生成配文...');
+
+        photoData = await requestAICaptions(photoData, {
+          albumType: effectiveAlbumType,
+          title: plainTitle,
+          fallbackCaptions,
+          onProgress: (done, total) => {
+            const pct = 45 + Math.round((done / total) * 27);
+            setProgress(pct, `🪄 正在生成配文 (${done}/${total})`);
+          }
+        });
+        setProgress(72, '🪄 配文处理完成');
+
+        try {
+          setProgress(82, '🧭 正在规划故事线...');
+          try {
+            chapters = await requestStoryline(photoData, {
+              albumType: effectiveAlbumType,
+              title: plainTitle
+            });
+            setProgress(88, currentStorylineSource === 'ai' ? '🧭 AI 故事线生成完成' : '🧭 已自动生成故事线');
+          } catch (storylineError) {
+            console.info('[Storyline] unavailable; using local storyline.', storylineError);
+            chapters = buildFallbackStoryline(photoData, effectiveAlbumType);
+            currentStorylineSource = 'fallback';
+            setProgress(88, '🧭 已根据照片数量自动分组');
+          }
+
+          hideLoader();
+          chapters = await showStorylinePreview(photoData, chapters, {
+            albumType: effectiveAlbumType,
+            title: plainTitle
+          });
+          photoData = orderPhotosByChapters(photoData, chapters);
+
+          showLoader('🎼 正在推荐主题和音乐...');
+          setProgress(92, '🎼 正在推荐主题和音乐...');
+          albumType = effectiveAlbumType;
+          await applyLLMRecommendationForAlbum({
+            albumType: effectiveAlbumType,
+            title: plainTitle,
+            photos: photoData,
+            captions: photoData.map(p => p.caption)
+          });
+
+          if (persistUploadedAlbum(photoData, albumTitle, chapters)) {
+            renderHistoryList();
+            albumType = 'uploaded';
+            const newUrl = `${window.location.pathname}?album=uploaded`;
+            window.history.replaceState({ path: newUrl }, '', newUrl);
+          }
+
+          setProgress(96, '📖 正在生成相册...');
+          await enterAlbum(photoData, albumTitle, { force: true, chapters });
+        } catch (flowError) {
+          console.error('[Album] generation failed after upload', flowError);
+          const recoveryChapters = chapters.length ? chapters : buildFallbackStoryline(photoData, effectiveAlbumType);
+          let recoverySaved = false;
+          try {
+            recoverySaved = persistUploadedAlbum(photoData, albumTitle, recoveryChapters);
+          } catch (recoveryError) {
+            console.warn('[Album] recovery draft failed', recoveryError);
+          }
+          if (recoverySaved) {
+            showUploadStatus('照片已保存，但相册生成未完成。刷新页面后可以继续查看已保存的照片。', 'error');
+          } else {
+            await deleteUploadedPhotos(photoData);
+            showUploadStatus('相册生成失败，已清理本次上传。请重新选择照片。', 'error');
+          }
+        }
+      }
+
+      function showUploadRecovery(uploaded, failedFiles, message) {
+        pendingUploadedPhotos = ensurePhotoIds(uploaded || []);
+        pendingFailedFiles = failedFiles || [];
+        uploadRecoveryActions?.classList.remove('hidden');
+        selectionPreview?.classList.add('hidden');
+        showUploadStatus(message, 'error');
+      }
+
+      async function startUploadAndGenerate(files, existingUploaded = []) {
+        const validation = validateSelectedFiles(files);
+        if (validation) {
+          showUploadStatus(validation, 'error');
+          return;
+        }
+        const effectiveAlbumType = selectedUploadAlbumType || 'default';
+        const allTargetCount = existingUploaded.length + files.length;
+        if (allTargetCount === 0) {
+          showUploadStatus('请先选择照片。', 'error');
+          return;
+        }
+
+        uploadInProgress = true;
+        setUploadControlsDisabled(true);
+        uploadRecoveryActions?.classList.add('hidden');
+        try {
+          showUploadStatus(`准备上传 ${files.length} 张照片，当前相册类型：${albumPresets[effectiveAlbumType]?.sceneLabel || '通用相册'}。`);
+          showLoader('☁️ 正在上传照片...');
+          setProgress(8, '☁️ 正在上传照片...');
+          const newlyUploaded = ensurePhotoIds(await uploadFilesToServer(files, (done, total, note) => {
+            const uploadedSoFar = existingUploaded.length + done;
+            const pct = 8 + Math.round((uploadedSoFar / allTargetCount) * 37);
+            setProgress(pct, `☁️ 正在上传照片 (${uploadedSoFar}/${allTargetCount})${note ? ` · ${note}` : ''}`);
+          }));
+          const photoData = ensurePhotoIds([...existingUploaded, ...newlyUploaded]);
+          await continueAlbumFlow(photoData, effectiveAlbumType);
+          clearSelectedFiles();
+        } catch (uploadError) {
+          console.error('[Upload] failed', uploadError);
+          hideLoader();
+          const uploaded = ensurePhotoIds([...existingUploaded, ...(uploadError.uploaded || [])]);
+          const failedFiles = uploadError.failedFiles || files;
+          if (uploaded.length > 0 && failedFiles.length > 0) {
+            showUploadRecovery(
+              uploaded,
+              failedFiles,
+              `${uploaded.length} 张已保存，${failedFiles.length} 张上传失败。你可以重试失败照片，或继续制作已上传的照片。`
+            );
+          } else {
+            showUploadStatus(`上传失败，照片尚未保存。请检查网络后重新选择照片。${uploadError?.message ? ` (${uploadError.message})` : ''}`, 'error');
+          }
+        } finally {
+          hideLoader();
+          photoUpload.value = '';
+          uploadInProgress = false;
+          setUploadControlsDisabled(false);
+        }
+      }
+
       // Actions
       startBtn.onclick = () => {
         if (!uploadInProgress) photoUpload.click();
@@ -2705,118 +3153,48 @@
       photoUpload.onchange = async (e) => {
         const files = Array.from(e.target.files);
         if (files.length === 0) return;
-        if (files.length > MAX_ALBUM_FILES) {
-          showUploadStatus(`一次最多选择 ${MAX_ALBUM_FILES} 张照片。`, 'error');
-          photoUpload.value = '';
+        const validation = validateSelectedFiles(files);
+        if (validation) {
+          clearSelectedFiles();
+          showUploadStatus(validation, 'error');
           return;
         }
-        const oversized = files.find(file => file.size > MAX_FILE_BYTES);
-        if (oversized) {
-          showUploadStatus(`“${oversized.name}”为 ${formatFileSize(oversized.size)}，单张照片不能超过 20MB。`, 'error');
-          photoUpload.value = '';
-          return;
-        }
+        selectedUploadFiles = files;
+        pendingUploadedPhotos = [];
+        pendingFailedFiles = [];
+        showUploadStatus(`已选择 ${files.length} 张照片，确认无误后开始制作。`);
+        renderSelectedPhotoPreview();
+      };
 
-        const albumTitle = "我们的<br>回忆录";
-        const plainTitle = "我们的回忆录";
-        const effectiveAlbumType = albumType === 'uploaded' ? 'default' : (albumType || 'default');
-        const fallbackCaptions = getCaptions(effectiveAlbumType, files.length);
-        let photoData = [];
-        let chapters = [];
-
+      clearSelectionBtn.onclick = () => clearSelectedFiles();
+      confirmUploadBtn.onclick = () => {
+        if (!uploadInProgress) startUploadAndGenerate([...selectedUploadFiles]);
+      };
+      retryFailedBtn.onclick = () => {
+        if (!uploadInProgress) startUploadAndGenerate([...pendingFailedFiles], [...pendingUploadedPhotos]);
+      };
+      continueUploadedBtn.onclick = async () => {
+        if (uploadInProgress || pendingUploadedPhotos.length === 0) return;
         uploadInProgress = true;
-        startBtn.disabled = true;
+        setUploadControlsDisabled(true);
         try {
-          showUploadStatus(`已选择 ${files.length} 张照片，正在安全上传到云端。`);
-
-          try {
-            showLoader('☁️ 正在上传照片...');
-            setProgress(8, '☁️ 正在上传照片...');
-            photoData = ensurePhotoIds(await uploadFilesToServer(files, (done, total, note) => {
-              const pct = 8 + Math.round((done / total) * 37);
-              setProgress(pct, `☁️ 正在上传照片 (${done}/${total})${note ? ` · ${note}` : ''}`);
-            }));
-            showUploadStatus(`${photoData.length} 张照片已安全保存到云端。`, 'success');
-            setProgress(45, `☁️ 上传完成，正在生成配文...`);
-
-            photoData = await requestAICaptions(photoData, {
-              albumType: effectiveAlbumType,
-              title: plainTitle,
-              fallbackCaptions,
-              onProgress: (done, total) => {
-                const pct = 45 + Math.round((done / total) * 27);
-                setProgress(pct, `🪄 正在生成配文 (${done}/${total})`);
-              }
-            });
-            setProgress(72, '🪄 AI 配文生成完成');
-          } catch (uploadError) {
-            console.error('[Upload] failed', uploadError);
-            hideLoader();
-            showUploadStatus(`上传失败，照片尚未保存。请检查网络后重新选择照片。${uploadError?.message ? ` (${uploadError.message})` : ''}`, 'error');
-            return;
-          }
-
-          try {
-            setProgress(82, '🧭 AI 正在规划故事线...');
-            try {
-              chapters = await requestStoryline(photoData, {
-                albumType: effectiveAlbumType,
-                title: plainTitle
-              });
-              setProgress(88, '🧭 故事线生成完成');
-            } catch (storylineError) {
-              console.info('[Storyline] unavailable; using local storyline.', storylineError);
-              chapters = buildFallbackStoryline(photoData, effectiveAlbumType);
-              setProgress(88, '🧭 已生成本地故事线');
-            }
-
-            hideLoader();
-            chapters = await showStorylinePreview(photoData, chapters, {
-              albumType: effectiveAlbumType,
-              title: plainTitle
-            });
-            photoData = orderPhotosByChapters(photoData, chapters);
-
-            showLoader('🎼 正在推荐主题和音乐...');
-            setProgress(92, '🎼 正在推荐主题和音乐...');
-            await applyLLMRecommendationForAlbum({
-              albumType: effectiveAlbumType,
-              title: plainTitle,
-              photos: photoData,
-              captions: photoData.map(p => p.caption)
-            });
-
-            if (persistUploadedAlbum(photoData, albumTitle, chapters)) { renderHistoryList();
-              albumType = 'uploaded';
-              const newUrl = `${window.location.pathname}?album=uploaded`;
-              window.history.replaceState({ path: newUrl }, '', newUrl);
-            }
-
-            setProgress(96, '📖 正在生成相册...');
-            await enterAlbum(photoData, albumTitle, { force: true, chapters });
-          } catch (flowError) {
-            console.error('[Album] generation failed after upload', flowError);
-            const recoveryChapters = chapters.length ? chapters : buildFallbackStoryline(photoData, effectiveAlbumType);
-            let recoverySaved = false;
-            try {
-              recoverySaved = persistUploadedAlbum(photoData, albumTitle, recoveryChapters);
-            } catch (recoveryError) {
-              console.warn('[Album] recovery draft failed', recoveryError);
-            }
-            if (recoverySaved) {
-              showUploadStatus('照片已保存，但相册生成未完成。刷新页面后可以继续查看已保存的照片。', 'error');
-            } else {
-              await deleteUploadedPhotos(photoData);
-              showUploadStatus('相册生成失败，已清理本次上传。请重新选择照片。', 'error');
-            }
-          }
+          showLoader('🪄 正在继续制作已上传照片...');
+          await continueAlbumFlow([...pendingUploadedPhotos], selectedUploadAlbumType || 'default');
+          clearSelectedFiles();
         } finally {
           hideLoader();
-          photoUpload.value = '';
           uploadInProgress = false;
-          startBtn.disabled = false;
+          setUploadControlsDisabled(false);
         }
       };
+
+      albumTypeSelector?.querySelectorAll('.album-type-option').forEach(btn => {
+        btn.onclick = () => {
+          selectedUploadAlbumType = btn.dataset.albumType || 'default';
+          renderAlbumTypeSelector();
+        };
+      });
+      renderAlbumTypeSelector();
 
       document.getElementById('nextBtn').onclick = () => { 
         const pageElements = document.querySelectorAll('.book .page');
@@ -2854,11 +3232,14 @@
         book.innerHTML = '';
         albumGeneratedOnce = false;
         releaseUploadedObjectUrls();
+        clearSelectedFiles();
         updateBook();
         // 清除 URL 参数，回到干净的上传页
         const newUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
         window.history.pushState({ path: newUrl }, '', newUrl);
         albumType = 'default';
+        selectedUploadAlbumType = 'default';
+        renderAlbumTypeSelector();
       }
 
       historyBtn.onclick = (e) => { e.stopPropagation(); historyPanel.classList.toggle("open"); editorPanel.classList.remove("open"); renderHistoryList(); };

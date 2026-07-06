@@ -858,10 +858,14 @@ async def _photo_to_data_uri(request: Request, url: str) -> str | None:
     return f"data:{content_type};base64,{encoded.decode('ascii')}"
 
 
-async def generate_caption_for_photo(request: Request, photo: CaptionPhoto, album_type: str | None) -> str:
+async def generate_caption_result_for_photo(
+    request: Request,
+    photo: CaptionPhoto,
+    album_type: str | None,
+) -> dict[str, str | None]:
     image_data_uri = await _photo_to_data_uri(request, photo.url)
     if not image_data_uri:
-        return fallback_caption(album_type)
+        return {"caption": "", "source": "error"}
 
     prompt = (
         "你是一位相册配文师。先理解这张照片：\n"
@@ -877,18 +881,23 @@ async def generate_caption_for_photo(request: Request, photo: CaptionPhoto, albu
         content = await call_vision_llm(prompt, [image_data_uri], text_fallback=False)
         caption = (content or "").strip().strip("\"'“”")
         if caption:
-            return caption[:40]
+            return {"caption": caption[:40], "source": "ai"}
     except Exception as e:
         print("Caption generation failed:", repr(e))
 
-    return fallback_caption(album_type)
+    return {"caption": fallback_caption(album_type), "source": "fallback"}
+
+
+async def generate_caption_for_photo(request: Request, photo: CaptionPhoto, album_type: str | None) -> str:
+    result = await generate_caption_result_for_photo(request, photo, album_type)
+    return str(result.get("caption") or fallback_caption(album_type))
 
 
 @app.post("/api/caption")
 async def generate_caption(request: Request, data: CaptionRequest):
     photo = CaptionPhoto(id=data.id, url=data.url)
-    caption = await generate_caption_for_photo(request, photo, data.albumType)
-    return JSONResponse({"id": data.id, "caption": caption})
+    result = await generate_caption_result_for_photo(request, photo, data.albumType)
+    return JSONResponse({"id": data.id, **result})
 
 
 @app.post("/api/captions")
@@ -898,15 +907,16 @@ async def generate_captions(request: Request, data: CaptionsRequest):
 
     async def caption_one(photo: CaptionPhoto):
         async with semaphore:
-            return await generate_caption_for_photo(request, photo, data.albumType)
+            return await generate_caption_result_for_photo(request, photo, data.albumType)
 
     generated = await asyncio.gather(*(caption_one(photo) for photo in photos))
     captions = []
-    for photo, caption in zip(photos, generated):
+    for photo, result in zip(photos, generated):
         captions.append({
             "id": photo.id,
             "url": photo.url,
-            "caption": caption,
+            "caption": result.get("caption", ""),
+            "source": result.get("source", "fallback"),
         })
     return JSONResponse({"captions": captions})
 
@@ -915,7 +925,7 @@ async def generate_captions(request: Request, data: CaptionsRequest):
 async def generate_storyline(request: Request, data: StorylineRequest):
     photos = [photo for photo in data.photos[:30] if photo.id]
     if not photos:
-        return JSONResponse({"chapters": []})
+        return JSONResponse({"chapters": [], "source": "fallback"})
 
     compact_photos = [
         {
@@ -969,11 +979,11 @@ photo_ids 必须只使用输入中出现过的 id，且每张照片必须且只�
                 photos,
                 data.albumType,
             )
-            return JSONResponse({"chapters": chapters})
+            return JSONResponse({"chapters": chapters, "source": "ai"})
     except Exception as e:
         print("Storyline generation failed:", repr(e))
 
-    return JSONResponse({"chapters": fallback_storyline(photos, data.albumType)})
+    return JSONResponse({"chapters": fallback_storyline(photos, data.albumType), "source": "fallback"})
 
 
 @app.post("/api/recommend")

@@ -187,10 +187,45 @@ class UserIsolationTests(unittest.TestCase):
         )
 
         self.assertEqual(caption.json()["caption"], "vision caption")
+        self.assertEqual(caption.json()["source"], "ai")
         self.assertEqual(storyline.json()["chapters"][0]["title"], "chapter")
+        self.assertEqual(storyline.json()["source"], "ai")
         self.assertEqual(recommendation.json()["themeId"], "classic")
         self.assertEqual(len(calls), 3)
         self.assertTrue(all(call[0].startswith("data:image/png;base64,") for call in calls))
+
+    def test_caption_reports_error_when_photo_is_not_readable(self):
+        client = TestClient(serve.app)
+        response = client.post(
+            "/api/caption",
+            json={"id": "missing", "url": "/uploads/" + "a" * 32 + "/missing.png", "albumType": "default"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["caption"], "")
+        self.assertEqual(response.json()["source"], "error")
+
+    def test_storyline_reports_fallback_source(self):
+        async def empty_llm(*args, **kwargs):
+            return None
+
+        serve.call_llm = empty_llm
+        client = TestClient(serve.app)
+        response = client.post(
+            "/api/storyline",
+            json={
+                "albumType": "default",
+                "title": "test",
+                "photos": [
+                    {"id": "p1", "url": "", "caption": "one"},
+                    {"id": "p2", "url": "", "caption": "two"},
+                ],
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["source"], "fallback")
+        self.assertGreaterEqual(len(response.json()["chapters"]), 1)
 
     def test_recommendation_falls_back_to_valid_theme_and_track(self):
         async def empty_llm(*args, **kwargs):
