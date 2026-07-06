@@ -605,17 +605,114 @@
     /* Generator Entry UI */
     .upload-container {
       flex: 1; display: flex; align-items: center; justify-content: center; width: 100%; z-index: 10;
+      padding: 34px 20px;
+    }
+    .upload-shell {
+      width: min(1120px, calc(100vw - 40px));
+      display: grid;
+      grid-template-columns: minmax(320px, 0.92fr) minmax(380px, 1fr);
+      gap: 24px;
+      align-items: stretch;
+    }
+    .upload-copy-panel {
+      position: relative;
+      overflow: hidden;
+      border-radius: 28px;
+      padding: 34px;
+      color: #fff;
+      background:
+        linear-gradient(135deg, rgba(20, 31, 44, 0.96), rgba(33, 68, 82, 0.92)),
+        url('assets/opt/photo_1.webp') center/cover;
+      box-shadow: 0 30px 70px rgba(21, 37, 52, 0.26);
+      min-height: 520px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+    .upload-copy-panel::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(180deg, rgba(8, 18, 28, 0.22), rgba(8, 18, 28, 0.78));
+      pointer-events: none;
+    }
+    .upload-copy-panel > * { position: relative; z-index: 1; }
+    .product-badge {
+      width: fit-content;
+      padding: 8px 12px;
+      border: 1px solid rgba(255,255,255,0.28);
+      border-radius: 999px;
+      background: rgba(255,255,255,0.12);
+      backdrop-filter: blur(10px);
+      font-size: 0.78rem;
+      font-weight: 900;
+      letter-spacing: 0;
+    }
+    .upload-hero-title {
+      margin: 28px 0 14px;
+      max-width: 9em;
+      font-family: var(--font-display);
+      font-size: clamp(2.6rem, 5vw, 4.8rem);
+      line-height: 0.96;
+      letter-spacing: 0;
+    }
+    .upload-hero-subtitle {
+      max-width: 480px;
+      margin: 0;
+      color: rgba(255,255,255,0.82);
+      font-size: 1.02rem;
+      line-height: 1.8;
+    }
+    .creation-steps {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 28px;
+    }
+    .creation-step {
+      min-height: 74px;
+      border-radius: 14px;
+      padding: 10px;
+      background: rgba(255,255,255,0.12);
+      border: 1px solid rgba(255,255,255,0.16);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+    .creation-step span {
+      font-size: 0.74rem;
+      color: rgba(255,255,255,0.62);
+      font-weight: 900;
+    }
+    .creation-step strong {
+      font-size: 0.88rem;
+      color: #fff;
+      line-height: 1.25;
+    }
+    .upload-proof-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 22px;
+    }
+    .upload-proof-row span {
+      padding: 8px 10px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.12);
+      color: rgba(255,255,255,0.82);
+      font-size: 0.78rem;
+      font-weight: 800;
     }
     .upload-box {
-      width: min(90%, 500px); background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(20px);
-      border: 3px dashed var(--cover-bg); border-radius: 40px; padding: 60px 40px; text-align: center;
-      box-shadow: 0 30px 60px var(--shadow); transition: all 0.4s;
+      width: 100%; background: rgba(255, 255, 255, 0.88); backdrop-filter: blur(22px);
+      border: 1px solid rgba(35, 47, 62, 0.1); border-radius: 28px; padding: 34px; text-align: center;
+      box-shadow: 0 30px 60px rgba(25, 40, 55, 0.16); transition: transform 0.35s, box-shadow 0.35s, border-color 0.35s;
     }
-    .upload-box:hover { transform: translateY(-10px); border-color: var(--accent); }
-    .upload-icon { font-size: 80px; margin-bottom: 25px; animation: bounce 2s infinite; }
-    @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-20px); } }
-    .upload-title { font-size: 2.2rem; color: var(--cover-bg); margin-bottom: 15px; font-weight: 900; font-family: var(--font-display); }
-    .upload-hint { font-size: 1.1rem; color: #666; margin-bottom: 40px; }
+    .upload-box:hover { transform: translateY(-4px); border-color: color-mix(in srgb, var(--accent) 56%, white); box-shadow: 0 34px 70px rgba(25, 40, 55, 0.2); }
+    .upload-icon { font-size: 56px; margin-bottom: 16px; animation: floatCamera 3s ease-in-out infinite; }
+    @keyframes floatCamera { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+    .upload-title { font-size: 2rem; color: var(--cover-bg); margin-bottom: 12px; font-weight: 900; font-family: var(--font-display); }
+    .upload-hint { font-size: 1rem; line-height: 1.7; color: #5c6670; margin-bottom: 24px; }
     .album-type-selector {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -623,11 +720,11 @@
       margin: 0 0 18px;
     }
     .album-type-option {
-      border: 1px solid rgba(0,0,0,0.08);
-      border-radius: 8px;
-      background: rgba(255,255,255,0.68);
+      border: 1px solid rgba(35,47,62,0.1);
+      border-radius: 14px;
+      background: rgba(255,255,255,0.76);
       color: var(--text);
-      padding: 12px 10px;
+      padding: 14px 10px;
       font-weight: 900;
       cursor: pointer;
       transition: transform 0.2s, border-color 0.2s, background 0.2s;
@@ -642,7 +739,7 @@
       font-size: 0.78rem;
       line-height: 1.6;
       color: #777;
-      margin: -24px 0 22px;
+      margin: 0 0 22px;
     }
     .selection-preview {
       margin: 18px 0 0;
@@ -765,7 +862,14 @@
       .scene.is-open, .magazine.is-open { --scene-shift: var(--scene-shift-open, 22vw); }
       .cover-title { font-size: 1.8rem; }
       .upload-title { font-size: 1.6rem; }
-      .upload-box { padding: 40px 20px; }
+      .upload-container { padding: 76px 14px 24px; align-items: flex-start; }
+      .upload-shell { width: 100%; grid-template-columns: 1fr; gap: 14px; }
+      .upload-copy-panel { min-height: 330px; border-radius: 22px; padding: 24px; }
+      .upload-hero-title { max-width: 8em; font-size: 2.7rem; }
+      .upload-hero-subtitle { font-size: 0.94rem; }
+      .creation-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .creation-step { min-height: 62px; }
+      .upload-box { padding: 26px 18px; border-radius: 22px; }
       .album-type-selector { grid-template-columns: 1fr; }
       .selected-photo-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
       .selection-actions, .upload-recovery-actions { grid-template-columns: 1fr; }
@@ -794,7 +898,16 @@
       .scene.is-open, .magazine.is-open { --scene-shift: var(--scene-shift-open, 19vh); }
       .cover-title { font-size: 1.8rem; }
       .upload-title { font-size: 1.4rem; }
-      .upload-box { padding: 20px; width: 80%; }
+      .upload-container { align-items: flex-start; padding-top: 70px; }
+      .upload-shell { grid-template-columns: 0.9fr 1fr; gap: 14px; }
+      .upload-copy-panel { min-height: 340px; padding: 22px; }
+      .upload-hero-title { font-size: 2.4rem; }
+      .upload-hero-subtitle { font-size: 0.86rem; line-height: 1.55; }
+      .creation-steps { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+      .creation-step { min-height: 56px; padding: 8px; }
+      .creation-step strong { font-size: 0.72rem; }
+      .creation-step span { font-size: 0.64rem; }
+      .upload-box { padding: 20px; width: 100%; }
       .upload-icon { font-size: 40px; margin-bottom: 10px; }
       .upload-hint { margin-bottom: 15px; font-size: 0.9rem; }
       .top-bar { top: 10px; right: 10px; gap: 6px; }
@@ -1134,6 +1247,28 @@
     <audio id="bgm" loop preload="auto"></audio>
 
     <div id="uploadContainer" class="upload-container">
+      <div class="upload-shell">
+      <section class="upload-copy-panel" aria-label="AI 相册制作台">
+        <div>
+          <div class="product-badge">v0.3.1 Cloud AI Album</div>
+          <h1 class="upload-hero-title">把照片做成会讲故事的相册</h1>
+          <p class="upload-hero-subtitle">AI 先理解画面，再写配文、编章节、配风格和音乐。你看到的不只是翻书，而是一段可以播放的家庭记忆。</p>
+        </div>
+        <div>
+          <div class="creation-steps" aria-label="制作流程">
+            <div class="creation-step"><span>01</span><strong>上传</strong></div>
+            <div class="creation-step"><span>02</span><strong>识图配文</strong></div>
+            <div class="creation-step"><span>03</span><strong>故事线</strong></div>
+            <div class="creation-step"><span>04</span><strong>风格音乐</strong></div>
+            <div class="creation-step"><span>05</span><strong>动态相册</strong></div>
+          </div>
+          <div class="upload-proof-row">
+            <span>多用户隔离</span>
+            <span>云端保存</span>
+            <span>20MB 单图</span>
+          </div>
+        </div>
+      </section>
       <div class="upload-box">
         <div class="upload-icon">📸</div>
         <h2 class="upload-title">创作您的专属动态相册</h2>
@@ -1162,6 +1297,7 @@
           <button type="button" class="upload-btn" id="continueUploadedBtn">继续制作已上传</button>
         </div>
         <p id="uploadStatus" class="upload-status" aria-live="polite"></p>
+      </div>
       </div>
     </div>
 
