@@ -2472,8 +2472,8 @@
           await checkUrlParams();
         }
 
+        void registerServiceWorker();
         const tasks = [];
-        tasks.push({ name: '启用离线缓存', p: registerServiceWorker() });
         tasks.push({ name: '预热背景音乐', p: preloadUrl(currentTrack || 'assets/bgm.mp3') });
 
         // 预热“首屏第一张图”（WebP 体积极小，弱网体验显著）
