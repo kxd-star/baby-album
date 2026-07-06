@@ -88,8 +88,9 @@ class CloudVisionTests(unittest.IsolatedAsyncioTestCase):
         minimax = serve.build_minimax_vision_messages("prompt", [data_uri])
         ark = serve.build_ark_vision_messages("prompt", [data_uri])
 
-        self.assertIsInstance(minimax[0]["content"], str)
-        self.assertIn(f"[image:{data_uri}]", minimax[0]["content"])
+        self.assertIsInstance(minimax[0]["content"], list)
+        self.assertEqual(minimax[0]["content"][0]["type"], "image_url")
+        self.assertEqual(minimax[0]["content"][0]["image_url"]["url"], data_uri)
         self.assertIsInstance(ark[0]["content"], list)
         self.assertEqual(ark[0]["content"][0]["type"], "image_url")
         self.assertEqual(ark[0]["content"][0]["image_url"]["url"], data_uri)
@@ -205,6 +206,27 @@ class UserIsolationTests(unittest.TestCase):
         self.assertEqual(response.json()["caption"], "")
         self.assertEqual(response.json()["source"], "error")
 
+    def test_caption_refuses_unrecognized_vision_reply(self):
+        async def vision_refusal(*args, **kwargs):
+            return "抱歉，我当前无法直接查看或解析您提供的图片内容，因此没办法"
+
+        serve.call_vision_llm = vision_refusal
+        client = TestClient(serve.app)
+        upload = client.post(
+            "/api/upload",
+            files={"files": ("photo.png", make_png(), "image/png")},
+            data={"photo_ids": "photo12345678"},
+        )
+        photo = upload.json()["photos"][0]
+        response = client.post(
+            "/api/caption",
+            json={"id": photo["id"], "url": photo["url"], "albumType": "baby"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["caption"], "宝宝的温暖成长瞬间")
+        self.assertEqual(response.json()["source"], "fallback")
+
     def test_storyline_reports_fallback_source(self):
         async def empty_llm(*args, **kwargs):
             return None
@@ -241,14 +263,14 @@ class UserIsolationTests(unittest.TestCase):
                 "captions": [],
                 "photos": [],
                 "themes": [{"id": "classic"}, {"id": "editorial"}],
-                "tracks": [{"src": "assets/bgm.mp3"}, {"src": "assets/bgm_3.mp3"}],
+                "tracks": [{"src": "assets/bgm.mp3"}, {"src": "assets/music/lullaby.mp3"}],
             },
         )
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {
             "themeId": "editorial",
-            "trackSrc": "assets/bgm_3.mp3",
+            "trackSrc": "assets/music/lullaby.mp3",
             "source": "fallback",
         })
 
@@ -266,14 +288,14 @@ class UserIsolationTests(unittest.TestCase):
                 "captions": [],
                 "photos": [],
                 "themes": [{"id": "classic"}, {"id": "moonlight-baby"}],
-                "tracks": [{"src": "assets/bgm.mp3"}, {"src": "assets/bgm_3.mp3"}],
+                "tracks": [{"src": "assets/bgm.mp3"}, {"src": "assets/music/lullaby.mp3"}],
             },
         )
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {
             "themeId": "moonlight-baby",
-            "trackSrc": "assets/bgm_3.mp3",
+            "trackSrc": "assets/music/lullaby.mp3",
             "source": "fallback",
         })
 

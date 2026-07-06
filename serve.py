@@ -426,8 +426,12 @@ async def call_llm(messages: list[dict[str, Any]], vision: bool = False) -> str 
 
 
 def build_minimax_vision_messages(prompt: str, image_data_uris: list[str]) -> list[dict[str, Any]]:
-    image_tags = "".join(f"[image:{data_uri}]" for data_uri in image_data_uris)
-    return [{"role": "user", "content": f"{image_tags}\n{prompt}"}]
+    content: list[dict[str, Any]] = [
+        {"type": "image_url", "image_url": {"url": data_uri}}
+        for data_uri in image_data_uris
+    ]
+    content.append({"type": "text", "text": prompt})
+    return [{"role": "user", "content": content}]
 
 
 def build_ark_vision_messages(prompt: str, image_data_uris: list[str]) -> list[dict[str, Any]]:
@@ -482,6 +486,28 @@ def fallback_caption(album_type: str | None = "default") -> str:
     return "值得珍藏的美好瞬间"
 
 
+def looks_like_vision_refusal(text: str | None) -> bool:
+    value = (text or "").strip().lower()
+    if not value:
+        return True
+    refusal_patterns = (
+        "无法直接查看",
+        "无法查看",
+        "无法识别",
+        "无法解析",
+        "图像数据无法",
+        "不能查看图片",
+        "看不到图片",
+        "can't view",
+        "cannot view",
+        "unable to view",
+        "can't see",
+        "cannot see",
+        "as an ai",
+    )
+    return any(pattern in value for pattern in refusal_patterns)
+
+
 def get_local_recommendation(
     album_type: str,
     themes: list[dict[str, Any]],
@@ -500,15 +526,15 @@ def get_local_recommendation(
     preferences = {
         "baby": (
             ["moonlight-baby", "cream-baby", "baby-blue", "classic"],
-            ["assets/bgm_3.mp3", "assets/bgm_2.mp3", "assets/bgm.mp3"],
+            ["assets/music/lullaby.mp3", "assets/bgm.mp3", "assets/music/travel_upbeat.mp3"],
         ),
         "wedding": (
             ["romantic-wedding", "dark-gold", "celebration", "classic"],
-            ["assets/bgm.mp3", "assets/bgm_2.mp3", "assets/bgm_3.mp3"],
+            ["assets/bgm.mp3", "assets/music/lullaby.mp3", "assets/music/travel_upbeat.mp3"],
         ),
         "default": (
             ["editorial", "gallery", "classic", "polaroid"],
-            ["assets/bgm_3.mp3", "assets/bgm_2.mp3", "assets/bgm.mp3"],
+            ["assets/music/lullaby.mp3", "assets/bgm.mp3", "assets/music/travel_upbeat.mp3"],
         ),
     }
     preferred_themes, preferred_tracks = preferences.get(album_type, preferences["default"])
@@ -880,7 +906,7 @@ async def generate_caption_result_for_photo(
     try:
         content = await call_vision_llm(prompt, [image_data_uri], text_fallback=False)
         caption = (content or "").strip().strip("\"'“”")
-        if caption:
+        if caption and not looks_like_vision_refusal(caption):
             return {"caption": caption[:40], "source": "ai"}
     except Exception as e:
         print("Caption generation failed:", repr(e))

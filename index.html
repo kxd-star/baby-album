@@ -1264,12 +1264,9 @@
 
       // AI 根据情绪、能量和适用场景，从真实不同的内置音频中选择。
       const tracks = [
-        { src: 'assets/bgm.mp3', name: '💍 白纱回忆', mood: '浪漫、庄重、温柔', energy: '低', scenes: ['婚礼', '情侣', '周年纪念'] },
-        { src: 'assets/bgm_2.mp3', name: '🌙 月光来信', mood: '安静、怀念、细腻', energy: '低', scenes: ['家庭回忆', '夜景', '人物特写'] },
-        { src: 'assets/bgm_3.mp3', name: '🎻 旧梦回响', mood: '温暖、舒缓、治愈', energy: '低', scenes: ['日常', '成长记录', '家庭'] },
-        { src: 'assets/music/lullaby.mp3', name: '🍼 摇篮微光', mood: '柔软、安心、纯真', energy: '极低', scenes: ['宝宝', '儿童', '亲子'] },
-        { src: 'assets/music/cinematic.mp3', name: '🎞️ 银幕序章', mood: '宏大、叙事、深情', energy: '中', scenes: ['旅行故事', '纪实', '庆典'] },
-        { src: 'assets/music/travel_upbeat.mp3', name: '☀️ 向晴天出发', mood: '明快、自由、快乐', energy: '高', scenes: ['旅行', '朋友聚会', '户外'] }
+        { src: 'assets/music/lullaby.mp3', name: '摇篮微光', mood: '柔软、安心、纯真', energy: '极低', scenes: ['宝宝', '儿童', '亲子', '家庭回忆'] },
+        { src: 'assets/bgm.mp3', name: '白纱回忆', mood: '浪漫、庄重、温柔', energy: '低', scenes: ['婚礼', '情侣', '周年纪念', '庆典'] },
+        { src: 'assets/music/travel_upbeat.mp3', name: '向晴天出发', mood: '明快、自由、快乐', energy: '高', scenes: ['旅行', '朋友聚会', '户外'] }
       ];
 
       // 多场景主题/BGM 依赖注入配置中心（可被上层通过 window.V23_ALBUM_PRESETS 覆写）
@@ -2720,12 +2717,12 @@
       
       function getLocalRecommendation(albumType) {
         if (albumType === 'baby') {
-          return { themeId: 'moonlight-baby', trackSrc: 'assets/bgm_3.mp3', source: 'fallback' };
+          return { themeId: 'moonlight-baby', trackSrc: 'assets/music/lullaby.mp3', source: 'fallback' };
         }
         if (albumType === 'wedding') {
           return { themeId: 'romantic-wedding', trackSrc: 'assets/bgm.mp3', source: 'fallback' };
         }
-        return { themeId: 'editorial', trackSrc: 'assets/bgm_3.mp3', source: 'fallback' };
+        return { themeId: 'editorial', trackSrc: 'assets/music/lullaby.mp3', source: 'fallback' };
       }
 
       // Optional LLM call hooked to Python backend serve.py. Static deployments keep working via local fallback.
