@@ -11,13 +11,13 @@
   <link rel="preload" href="assets/bgm.mp3" as="audio" type="audio/mpeg">
   <style>
     :root {
-      --bg: #f4f3f0;
-      --cover-bg: #26323b;
-      --page-bg: #ffffff;
-      --text: #2f383f;
-      --shadow: rgba(34, 42, 49, 0.14);
+      --bg: linear-gradient(135deg, #fbf5ed 0%, #f2e8dc 100%);
+      --cover-bg: #7a5b48;
+      --page-bg: #fffaf4;
+      --text: #3f332c;
+      --shadow: rgba(111, 78, 55, 0.16);
       --flip-dur: 0.6s;
-      --accent: #8b7a66;
+      --accent: #c39a75;
       --font-display: 'Inter', sans-serif;
       --font-body: 'PingFang SC', sans-serif;
       --border-radius: 16px;
@@ -507,26 +507,26 @@
       display: flex; gap: 8px;
       z-index: 9999;
       padding: 6px;
-      border: 1px solid rgba(36, 45, 54, 0.08);
+      border: 1px solid rgba(118, 88, 66, 0.1);
       border-radius: 999px;
-      background: rgba(255, 255, 255, 0.72);
+      background: rgba(255, 250, 244, 0.78);
       backdrop-filter: blur(18px);
-      box-shadow: 0 10px 28px rgba(28, 38, 48, 0.08);
+      box-shadow: 0 10px 28px rgba(111, 78, 55, 0.1);
     }
     .icon-btn {
       width: 40px; height: 40px;
       border-radius: 999px;
       border: 1px solid transparent;
       background: transparent;
-      color: #34404a; font-size: 17px;
+      color: #6d5748; font-size: 17px;
       cursor: pointer;
       display: flex; align-items: center; justify-content: center;
       transition: background 0.2s, color 0.2s, border-color 0.2s, transform 0.2s;
       -webkit-tap-highlight-color: transparent;
     }
-    .icon-btn:hover { transform: translateY(-1px); background: rgba(36, 45, 54, 0.06); border-color: rgba(36, 45, 54, 0.08); }
-    .icon-btn.active { background: #1f2a33; color: #fff; }
-    .music-btn.playing { background: #1f2a33; color: #fff; }
+    .icon-btn:hover { transform: translateY(-1px); background: rgba(122, 91, 72, 0.08); border-color: rgba(122, 91, 72, 0.12); }
+    .icon-btn.active { background: #7a5b48; color: #fffaf4; }
+    .music-btn.playing { background: #7a5b48; color: #fffaf4; }
     @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
     /* Floating Editor Panel (SaaS Style) */
@@ -620,62 +620,62 @@
     }
     .upload-box {
       width: 100%;
-      background: rgba(255, 255, 255, 0.78);
+      background: rgba(255, 250, 244, 0.84);
       backdrop-filter: blur(24px);
-      border: 1px solid rgba(45, 54, 62, 0.12);
+      border: 1px solid rgba(122, 91, 72, 0.14);
       border-radius: 22px;
       padding: 46px 52px 42px;
       text-align: center;
-      box-shadow: 0 28px 80px rgba(41, 48, 56, 0.12);
+      box-shadow: 0 28px 80px rgba(111, 78, 55, 0.14);
       transition: transform 0.3s, box-shadow 0.3s, border-color 0.3s;
     }
-    .upload-box:hover { transform: translateY(-2px); border-color: rgba(45, 54, 62, 0.2); box-shadow: 0 34px 92px rgba(41, 48, 56, 0.14); }
+    .upload-box:hover { transform: translateY(-2px); border-color: rgba(122, 91, 72, 0.22); box-shadow: 0 34px 92px rgba(111, 78, 55, 0.16); }
     .upload-box > .upload-icon {
       width: fit-content;
       margin: 0 auto 18px;
       padding: 7px 12px;
       border-radius: 999px;
-      border: 1px solid rgba(45, 54, 62, 0.14);
-      color: #62717d;
+      border: 1px solid rgba(122, 91, 72, 0.16);
+      color: #9b806b;
       font-size: 0.76rem;
       font-weight: 900;
       letter-spacing: 0.08em;
       text-transform: uppercase;
       animation: none;
     }
-    .upload-title { font-size: 2.18rem; color: #25313a; margin-bottom: 12px; font-weight: 900; font-family: var(--font-display); letter-spacing: 0; }
-    .upload-hint { max-width: 520px; margin: 0 auto 28px; font-size: 1rem; line-height: 1.75; color: #6d747b; }
+    .upload-title { font-size: 2.18rem; color: #4a392f; margin-bottom: 12px; font-weight: 900; font-family: var(--font-display); letter-spacing: 0; }
+    .upload-hint { max-width: 520px; margin: 0 auto 28px; font-size: 1rem; line-height: 1.75; color: #7a6a5f; }
     .album-type-selector {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 8px;
       margin: 0 0 20px;
       padding: 5px;
-      border: 1px solid rgba(45, 54, 62, 0.08);
+      border: 1px solid rgba(122, 91, 72, 0.1);
       border-radius: 16px;
-      background: rgba(247, 248, 248, 0.9);
+      background: rgba(246, 238, 229, 0.9);
     }
     .album-type-option {
       border: 1px solid transparent;
       border-radius: 12px;
       background: transparent;
-      color: #59636b;
+      color: #756357;
       padding: 13px 10px;
       font-weight: 900;
       cursor: pointer;
       transition: border-color 0.2s, background 0.2s, color 0.2s, box-shadow 0.2s;
     }
-    .album-type-option:hover { background: rgba(255,255,255,0.72); color: #2b343c; }
+    .album-type-option:hover { background: rgba(255,250,244,0.8); color: #4a392f; }
     .album-type-option.active {
-      background: #fff;
-      color: #25313a;
-      border-color: rgba(45, 54, 62, 0.12);
-      box-shadow: 0 8px 20px rgba(41, 48, 56, 0.08);
+      background: #fffaf4;
+      color: #4a392f;
+      border-color: rgba(122, 91, 72, 0.14);
+      box-shadow: 0 8px 20px rgba(111, 78, 55, 0.1);
     }
     .upload-limits {
       font-size: 0.78rem;
       line-height: 1.6;
-      color: #777;
+      color: #8a7a6f;
       margin: 0 0 22px;
     }
     .selection-preview {
@@ -740,7 +740,7 @@
       border-radius: 12px;
       border: 1px solid rgba(45, 54, 62, 0.12);
       background: rgba(255,255,255,0.74);
-      color: #34404a;
+      color: #6d5748;
       font-weight: 900;
       cursor: pointer;
     }
@@ -769,17 +769,17 @@
     .upload-btn {
       padding: 17px 46px;
       min-width: 190px;
-      background: #26323b;
-      color: white;
-      border: 1px solid #26323b;
+      background: #7a5b48;
+      color: #fffaf4;
+      border: 1px solid #7a5b48;
       border-radius: 12px;
       font-size: 1.06rem;
       font-weight: 900;
       cursor: pointer;
-      box-shadow: 0 16px 36px rgba(38, 50, 59, 0.18);
+      box-shadow: 0 16px 36px rgba(122, 91, 72, 0.22);
       transition: transform 0.2s, background 0.2s, box-shadow 0.2s;
     }
-    .upload-btn:hover { transform: translateY(-1px); background: #17222b; box-shadow: 0 18px 42px rgba(38, 50, 59, 0.22); }
+    .upload-btn:hover { transform: translateY(-1px); background: #654837; box-shadow: 0 18px 42px rgba(122, 91, 72, 0.26); }
     .upload-btn:disabled { opacity: 0.55; cursor: wait; transform: none; }
     .upload-status { min-height: 24px; margin-top: 16px; font-size: 0.9rem; font-weight: 700; color: #666; }
     .upload-status.error { color: #b42318; }
