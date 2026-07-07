@@ -189,9 +189,12 @@ class UserIsolationTests(unittest.TestCase):
 
         self.assertEqual(caption.json()["caption"], "vision caption")
         self.assertEqual(caption.json()["source"], "ai")
+        self.assertEqual(caption.json()["mode"], "vision")
         self.assertEqual(storyline.json()["chapters"][0]["title"], "chapter")
         self.assertEqual(storyline.json()["source"], "ai")
+        self.assertEqual(storyline.json()["mode"], "vision")
         self.assertEqual(recommendation.json()["themeId"], "classic")
+        self.assertEqual(recommendation.json()["mode"], "vision")
         self.assertEqual(len(calls), 3)
         self.assertTrue(all(call[0].startswith("data:image/png;base64,") for call in calls))
 
@@ -205,6 +208,7 @@ class UserIsolationTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["caption"], "")
         self.assertEqual(response.json()["source"], "error")
+        self.assertEqual(response.json()["mode"], "none")
 
     def test_caption_refuses_unrecognized_vision_reply(self):
         async def vision_refusal(*args, **kwargs):
@@ -226,6 +230,7 @@ class UserIsolationTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["caption"], "宝宝的温暖成长瞬间")
         self.assertEqual(response.json()["source"], "fallback")
+        self.assertEqual(response.json()["mode"], "local")
 
     def test_storyline_reports_fallback_source(self):
         async def empty_llm(*args, **kwargs):
@@ -247,6 +252,7 @@ class UserIsolationTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["source"], "fallback")
+        self.assertEqual(response.json()["mode"], "local")
         self.assertGreaterEqual(len(response.json()["chapters"]), 1)
 
     def test_recommendation_falls_back_to_valid_theme_and_track(self):
@@ -272,6 +278,7 @@ class UserIsolationTests(unittest.TestCase):
             "themeId": "editorial",
             "trackSrc": "assets/music/lullaby.mp3",
             "source": "fallback",
+            "mode": "local",
         })
 
     def test_invalid_ai_recommendation_is_replaced(self):
@@ -297,6 +304,7 @@ class UserIsolationTests(unittest.TestCase):
             "themeId": "moonlight-baby",
             "trackSrc": "assets/music/lullaby.mp3",
             "source": "fallback",
+            "mode": "local",
         })
 
     def test_cloud_bundle_contains_playable_music_and_demo_image(self):

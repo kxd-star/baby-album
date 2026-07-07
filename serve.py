@@ -43,6 +43,23 @@ def _get_upload_lock(user_id: str) -> asyncio.Lock:
     return lock
 
 
+def request_user_tag(request: Request) -> str:
+    user_id = str(getattr(getattr(request, "state", None), "user_id", "") or "")
+    if not user_id:
+        return "unknown"
+    return hashlib.sha256(user_id.encode("utf-8")).hexdigest()[:10]
+
+
+def log_ai_event(event: str, **fields: Any) -> None:
+    safe_fields: dict[str, Any] = {"event": event}
+    for key, value in fields.items():
+        if value is None:
+            continue
+        if isinstance(value, (str, int, float, bool)):
+            safe_fields[key] = value
+    print("[ai_album] " + json.dumps(safe_fields, ensure_ascii=False), flush=True)
+
+
 def _s() -> Any:
     global _storage
     if _storage is None:
@@ -544,7 +561,7 @@ def get_local_recommendation(
         theme_id = next(iter(theme_ids))
     if not track_src and track_srcs:
         track_src = next(iter(track_srcs))
-    return {"themeId": theme_id, "trackSrc": track_src, "source": "fallback"}
+    return {"themeId": theme_id, "trackSrc": track_src, "source": "fallback", "mode": "local"}
 
 
 def storyline_templates(album_type: str | None = "default") -> list[dict[str, str]]:
@@ -752,6 +769,13 @@ async def upload_photos(
             print("Upload persistence failed:", repr(e))
             raise HTTPException(status_code=503, detail="Upload storage is unavailable") from e
 
+    log_ai_event(
+        "upload",
+        user=request_user_tag(request),
+        count=len(photos),
+        totalBytes=sum(int(photo.get("size", 0) or 0) for photo in photos),
+        storage=storage_mode(),
+    )
     return JSONResponse({"photos": photos})
 
 
@@ -889,9 +913,20 @@ async def generate_caption_result_for_photo(
     photo: CaptionPhoto,
     album_type: str | None,
 ) -> dict[str, str | None]:
+    started = time.perf_counter()
+    photo_tag = str(photo.id or "")[:12] or "unknown"
     image_data_uri = await _photo_to_data_uri(request, photo.url)
     if not image_data_uri:
-        return {"caption": "", "source": "error"}
+        log_ai_event(
+            "caption",
+            user=request_user_tag(request),
+            photo=photo_tag,
+            source="error",
+            mode="none",
+            reason="image_unavailable",
+            ms=int((time.perf_counter() - started) * 1000),
+        )
+        return {"caption": "", "source": "error", "mode": "none"}
 
     prompt = (
         "你是一位家庭相册配文师。请先准确观察照片中真实可见的内容，"
@@ -903,15 +938,37 @@ async def generate_caption_result_for_photo(
         "4. 不要编造照片里看不到的身份、地点、事件；\n"
         "5. 只输出配文本句，不要解释。"
     )
+    fallback_reason = "empty_response"
     try:
         content = await call_vision_llm(prompt, [image_data_uri], text_fallback=False)
         caption = (content or "").strip().strip("\"'“”")
         if caption and not looks_like_vision_refusal(caption):
-            return {"caption": caption[:40], "source": "ai"}
+            log_ai_event(
+                "caption",
+                user=request_user_tag(request),
+                photo=photo_tag,
+                source="ai",
+                mode="vision",
+                captionChars=len(caption[:40]),
+                ms=int((time.perf_counter() - started) * 1000),
+            )
+            return {"caption": caption[:40], "source": "ai", "mode": "vision"}
+        if caption:
+            fallback_reason = "vision_refusal"
     except Exception as e:
+        fallback_reason = type(e).__name__
         print("Caption generation failed:", repr(e))
 
-    return {"caption": fallback_caption(album_type), "source": "fallback"}
+    log_ai_event(
+        "caption",
+        user=request_user_tag(request),
+        photo=photo_tag,
+        source="fallback",
+        mode="local",
+        reason=fallback_reason,
+        ms=int((time.perf_counter() - started) * 1000),
+    )
+    return {"caption": fallback_caption(album_type), "source": "fallback", "mode": "local"}
 
 
 async def generate_caption_for_photo(request: Request, photo: CaptionPhoto, album_type: str | None) -> str:
@@ -943,15 +1000,38 @@ async def generate_captions(request: Request, data: CaptionsRequest):
             "url": photo.url,
             "caption": result.get("caption", ""),
             "source": result.get("source", "fallback"),
+            "mode": result.get("mode", "local"),
         })
+    source_counts: dict[str, int] = {}
+    for item in captions:
+        source = str(item.get("source") or "unknown")
+        source_counts[source] = source_counts.get(source, 0) + 1
+    log_ai_event(
+        "captions_batch",
+        user=request_user_tag(request),
+        count=len(captions),
+        ai=source_counts.get("ai", 0),
+        fallback=source_counts.get("fallback", 0),
+        error=source_counts.get("error", 0),
+    )
     return JSONResponse({"captions": captions})
 
 
 @app.post("/api/storyline")
 async def generate_storyline(request: Request, data: StorylineRequest):
+    started = time.perf_counter()
     photos = [photo for photo in data.photos[:30] if photo.id]
     if not photos:
-        return JSONResponse({"chapters": [], "source": "fallback"})
+        log_ai_event(
+            "storyline",
+            user=request_user_tag(request),
+            source="fallback",
+            mode="local",
+            reason="no_photos",
+            photos=0,
+            ms=int((time.perf_counter() - started) * 1000),
+        )
+        return JSONResponse({"chapters": [], "source": "fallback", "mode": "local"})
 
     compact_photos = [
         {
@@ -993,9 +1073,14 @@ photo_ids 必须只使用输入中出现过的 id，且每张照片必须且只�
     )
     photo_data_uris = [image for image in loaded_images if isinstance(image, str)]
 
+    mode = "vision" if photo_data_uris else "text"
+    fallback_reason = "empty_response"
     try:
         if photo_data_uris:
-            content = await call_vision_llm(prompt, photo_data_uris)
+            content = await call_vision_llm(prompt, photo_data_uris, text_fallback=False)
+            if not content:
+                mode = "text"
+                content = await call_llm([{"role": "user", "content": prompt}], vision=False)
         else:
             content = await call_llm([{"role": "user", "content": prompt}], vision=False)
         if content:
@@ -1005,15 +1090,39 @@ photo_ids 必须只使用输入中出现过的 id，且每张照片必须且只�
                 photos,
                 data.albumType,
             )
-            return JSONResponse({"chapters": chapters, "source": "ai"})
+            log_ai_event(
+                "storyline",
+                user=request_user_tag(request),
+                source="ai",
+                mode=mode,
+                photos=len(photos),
+                images=len(photo_data_uris),
+                chapters=len(chapters),
+                ms=int((time.perf_counter() - started) * 1000),
+            )
+            return JSONResponse({"chapters": chapters, "source": "ai", "mode": mode})
     except Exception as e:
+        fallback_reason = type(e).__name__
         print("Storyline generation failed:", repr(e))
 
-    return JSONResponse({"chapters": fallback_storyline(photos, data.albumType), "source": "fallback"})
+    chapters = fallback_storyline(photos, data.albumType)
+    log_ai_event(
+        "storyline",
+        user=request_user_tag(request),
+        source="fallback",
+        mode="local",
+        reason=fallback_reason,
+        photos=len(photos),
+        images=len(photo_data_uris),
+        chapters=len(chapters),
+        ms=int((time.perf_counter() - started) * 1000),
+    )
+    return JSONResponse({"chapters": chapters, "source": "fallback", "mode": "local"})
 
 
 @app.post("/api/recommend")
 async def recommend(request: Request, data: RecommendRequest):
+    started = time.perf_counter()
     album_type = data.albumType or "default"
     themes = data.themes[:50]
     tracks = data.tracks[:50]
@@ -1056,12 +1165,29 @@ async def recommend(request: Request, data: RecommendRequest):
 请只返回合法 JSON，形如 {{"themeId": "xxx", "trackSrc": "xxx"}}。"""
 
     content: str | None = None
+    mode = "vision" if photo_data_uris else "text"
+    fallback_reason = "empty_response"
     try:
         if photo_data_uris:
-            content = await call_vision_llm(prompt, photo_data_uris)
+            content = await call_vision_llm(prompt, photo_data_uris, text_fallback=False)
+            if not content:
+                mode = "text"
         if not content:
             content = await call_llm([{"role": "user", "content": prompt}], vision=False)
         if not content:
+            log_ai_event(
+                "recommend",
+                user=request_user_tag(request),
+                source="fallback",
+                mode="local",
+                reason="empty_response",
+                albumType=album_type,
+                photos=len(photos),
+                images=len(photo_data_uris),
+                themeId=local_recommendation["themeId"],
+                trackSrc=local_recommendation["trackSrc"],
+                ms=int((time.perf_counter() - started) * 1000),
+            )
             return JSONResponse(local_recommendation)
 
         result = safe_json_from_text(content)
@@ -1069,13 +1195,43 @@ async def recommend(request: Request, data: RecommendRequest):
         track_srcs = {str(t.get("src", "")) for t in tracks if isinstance(t, dict)}
         theme_id = result.get("themeId", "")
         track_src = result.get("trackSrc", "")
-        return JSONResponse({
+        valid = theme_id in theme_ids and track_src in track_srcs
+        response = {
             "themeId": theme_id if theme_id in theme_ids else local_recommendation["themeId"],
             "trackSrc": track_src if track_src in track_srcs else local_recommendation["trackSrc"],
-            "source": "ai" if theme_id in theme_ids and track_src in track_srcs else "fallback",
-        })
+            "source": "ai" if valid else "fallback",
+            "mode": mode if valid else "local",
+        }
+        log_ai_event(
+            "recommend",
+            user=request_user_tag(request),
+            source=response["source"],
+            mode=response["mode"],
+            reason="" if valid else "invalid_ai_choice",
+            albumType=album_type,
+            photos=len(photos),
+            images=len(photo_data_uris),
+            themeId=response["themeId"],
+            trackSrc=response["trackSrc"],
+            ms=int((time.perf_counter() - started) * 1000),
+        )
+        return JSONResponse(response)
     except Exception as e:
+        fallback_reason = type(e).__name__
         print("LLM Call failed:", repr(e))
+        log_ai_event(
+            "recommend",
+            user=request_user_tag(request),
+            source="fallback",
+            mode="local",
+            reason=fallback_reason,
+            albumType=album_type,
+            photos=len(photos),
+            images=len(photo_data_uris),
+            themeId=local_recommendation["themeId"],
+            trackSrc=local_recommendation["trackSrc"],
+            ms=int((time.perf_counter() - started) * 1000),
+        )
         return JSONResponse(local_recommendation)
 
 

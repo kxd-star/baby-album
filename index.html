@@ -931,13 +931,6 @@
       line-height: 1.7;
       color: #756357;
     }
-    .chapter-photo-count {
-      border-top: 1px solid rgba(122, 91, 72, 0.18);
-      padding-top: 14px;
-      font-size: 0.78rem;
-      color: #9b806b;
-    }
-
     .cover-side { background: var(--cover-bg); color: white; border: none; display: flex; align-items: center; justify-content: center; }
     .cover-title { font-size: 3rem; font-weight: 900; text-align: center; font-family: var(--font-display); line-height: 1.1; }
 
@@ -2556,7 +2549,7 @@
         };
       }
 
-      function buildChapterSide(chapter, index, count) {
+      function buildChapterSide(chapter, index) {
         return {
           className: 'chapter-side',
           content: `
@@ -2564,7 +2557,6 @@
               <div class="chapter-number">CHAPTER ${String(index + 1).padStart(2, '0')}</div>
               <h2 class="chapter-page-title">${escapeHtml(chapter.title || `第${index + 1}章`)}</h2>
               <p class="chapter-page-description">${escapeHtml(chapter.description || '这些照片组成了一段温暖回忆。')}</p>
-              <div class="chapter-photo-count">${count} 张照片</div>
             </div>
           `
         };
@@ -2587,7 +2579,7 @@
           });
           if (chapterPhotos.length === 0) return;
 
-          sides.push(buildChapterSide(chapter, index, chapterPhotos.length));
+          sides.push(buildChapterSide(chapter, index));
           chapterPhotos.forEach(photo => sides.push(buildPhotoSide(photo, '精选瞬间 ✨')));
         });
 
