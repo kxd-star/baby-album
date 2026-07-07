@@ -1314,6 +1314,8 @@
       let audioPlaybackPrimed = false;
       let primedAudioVolume = 1;
       const UPLOADED_ALBUM_KEY = 'v23_uploaded_album';
+      const UPLOADED_ALBUMS_KEY = 'v23_uploaded_albums';
+      const MAX_HISTORY_ALBUMS = 20;
       const API_BASE_URL = String(window.ALBUM_API_BASE_URL || '').replace(/\/+$/, '');
       const MAX_ALBUM_FILES = 30;
       const MAX_FILE_BYTES = 20 * 1024 * 1024;
@@ -1484,6 +1486,77 @@
           : [];
       }
 
+      function createUploadedAlbumId() {
+        return `album_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+      }
+
+      function readUploadedAlbumRecords() {
+        const records = [];
+        try {
+          const rawList = localStorage.getItem(UPLOADED_ALBUMS_KEY);
+          const list = rawList ? JSON.parse(rawList) : [];
+          if (Array.isArray(list)) records.push(...list.filter(Boolean));
+        } catch (error) {
+          console.warn('[Album] failed to read album history', error);
+        }
+
+        if (records.length === 0) {
+          try {
+            const rawLegacy = localStorage.getItem(UPLOADED_ALBUM_KEY);
+            if (rawLegacy) {
+              const legacy = JSON.parse(rawLegacy);
+              if (legacy && Array.isArray(legacy.photos) && legacy.photos.length > 0) {
+                records.push({
+                  ...legacy,
+                  id: legacy.id || 'legacy_uploaded_album',
+                  createdAt: Number(legacy.createdAt || localStorage.getItem(UPLOADED_ALBUM_KEY+'_ts') || Date.now())
+                });
+              }
+            }
+          } catch (error) {
+            console.warn('[Album] failed to read legacy uploaded album', error);
+          }
+        }
+
+        return records;
+      }
+
+      function normalizeUploadedAlbumRecord(data) {
+        if (!data || !Array.isArray(data.photos) || data.photos.length === 0) return null;
+        const photos = data.photos.map(photo => ({
+          id: photo.id || '',
+          src: photo.src,
+          caption: photo.caption || '',
+          captionSource: photo.captionSource || (photo.caption ? 'fallback' : 'error'),
+          persisted: true
+        })).filter(photo => photo.src);
+        if (photos.length === 0) return null;
+
+        const chapters = sanitizeChaptersForStorage(data.chapters, photos.map(photo => photo.id).filter(Boolean));
+        const photoById = new Map(photos.map(photo => [photo.id, photo]));
+        const orderedPhotos = [];
+
+        chapters.forEach(chapter => {
+          chapter.photo_ids.forEach(photoId => {
+            const photo = photoById.get(photoId);
+            if (photo && !orderedPhotos.includes(photo)) orderedPhotos.push(photo);
+          });
+        });
+        photos.forEach(photo => {
+          if (!orderedPhotos.includes(photo)) orderedPhotos.push(photo);
+        });
+
+        return {
+          id: String(data.id || ''),
+          title: data.title || '我们的<br>回忆录',
+          photos: orderedPhotos,
+          chapters,
+          theme: String(data.theme || ''),
+          track: String(data.track || ''),
+          createdAt: Number(data.createdAt || Date.now())
+        };
+      }
+
       function persistUploadedAlbum(photos, title, chapters = []) {
         const persistedPhotos = photos
           .filter(photo => photo && photo.persisted && photo.src)
@@ -1497,82 +1570,75 @@
         if (persistedPhotos.length === 0) return false;
 
         const persistedIds = persistedPhotos.map(photo => photo.id).filter(Boolean);
+        const createdAt = Date.now();
+        const albumRecord = {
+          id: createUploadedAlbumId(),
+          title,
+          photos: persistedPhotos,
+          chapters: sanitizeChaptersForStorage(chapters, persistedIds),
+          theme: currentTheme,
+          track: currentTrack,
+          createdAt
+        };
         try {
-          localStorage.setItem(UPLOADED_ALBUM_KEY, JSON.stringify({
-            title,
-            photos: persistedPhotos,
-            chapters: sanitizeChaptersForStorage(chapters, persistedIds),
-            theme: currentTheme,
-            track: currentTrack,
-            createdAt: Date.now()
-          }));
-          localStorage.setItem(UPLOADED_ALBUM_KEY+'_ts', String(Date.now()));
-          return true;
+          const existing = readUploadedAlbumRecords()
+            .filter(record => record && record.id !== albumRecord.id);
+          const nextRecords = [albumRecord, ...existing].slice(0, MAX_HISTORY_ALBUMS);
+          localStorage.setItem(UPLOADED_ALBUMS_KEY, JSON.stringify(nextRecords));
+          localStorage.setItem(UPLOADED_ALBUM_KEY, JSON.stringify(albumRecord));
+          localStorage.setItem(UPLOADED_ALBUM_KEY+'_ts', String(createdAt));
+          return albumRecord.id;
         } catch (error) {
           console.warn('[Album] failed to remember uploaded album locally', error);
-          return false;
+          return '';
         }
       }
 
-      function loadUploadedAlbum() {
-        try {
-          const raw = localStorage.getItem(UPLOADED_ALBUM_KEY);
-          if (!raw) return null;
-          const data = JSON.parse(raw);
-          if (!Array.isArray(data.photos) || data.photos.length === 0) return null;
-          const photos = data.photos.map(photo => ({
-            id: photo.id || '',
-            src: photo.src,
-            caption: photo.caption || '',
-            captionSource: photo.captionSource || (photo.caption ? 'fallback' : 'error'),
-            persisted: true
-          }));
-          const chapters = sanitizeChaptersForStorage(data.chapters, photos.map(photo => photo.id).filter(Boolean));
-          const photoById = new Map(photos.map(photo => [photo.id, photo]));
-          const orderedPhotos = [];
+      function loadUploadedAlbums() {
+        return readUploadedAlbumRecords()
+          .map(normalizeUploadedAlbumRecord)
+          .filter(Boolean)
+          .sort((a, b) => b.createdAt - a.createdAt)
+          .slice(0, MAX_HISTORY_ALBUMS);
+      }
 
-          chapters.forEach(chapter => {
-            chapter.photo_ids.forEach(photoId => {
-              const photo = photoById.get(photoId);
-              if (photo && !orderedPhotos.includes(photo)) orderedPhotos.push(photo);
-            });
-          });
-          photos.forEach(photo => {
-            if (!orderedPhotos.includes(photo)) orderedPhotos.push(photo);
-          });
-
-          return {
-            title: data.title || '我们的<br>回忆录',
-            photos: orderedPhotos,
-            chapters,
-            theme: String(data.theme || ''),
-            track: String(data.track || '')
-          };
-        } catch (e) {
-          console.warn('[Album] failed to load uploaded album', e);
-          return null;
-        }
+      function loadUploadedAlbum(albumId = '') {
+        const albums = loadUploadedAlbums();
+        if (albumId) return albums.find(album => album.id === albumId) || null;
+        return albums[0] || null;
       }
 
       function renderHistoryList() {
         const list = document.getElementById('historyList');
         if (!list) return;
-        const saved = loadUploadedAlbum();
-        if (!saved) {
+        const albums = loadUploadedAlbums();
+        if (albums.length === 0) {
           list.innerHTML = '<div class="history-empty" style="padding:20px;text-align:center;color:#999;font-size:0.85rem;">还没有相册，上传照片开始制作你的第一本 AI 相册吧</div>';
           return;
         }
-        const title = String(saved.title || '我们的回忆录').replace(/<br\s*\/?>/gi, ' ');
-        const count = saved.photos?.length || 0;
-        list.innerHTML = `
+        list.innerHTML = albums.map(album => {
+          const title = String(album.title || '我们的回忆录').replace(/<br\s*\/?>/gi, ' ');
+          const count = album.photos?.length || 0;
+          const createdAt = new Date(album.createdAt || Date.now()).toLocaleDateString('zh-CN');
+          const href = `?album=uploaded&id=${encodeURIComponent(album.id)}`;
+          return `
           <div class="history-item">
-            <a href="?album=uploaded" class="history-item-link">
+            <a href="${href}" class="history-item-link" data-album-id="${escapeHtml(album.id)}">
               <div class="history-info">
                 <span class="history-title">📖 ${escapeHtml(title)}</span>
-                <span class="history-desc">${count} 张照片 · 保存于 ${new Date(parseInt(localStorage.getItem(UPLOADED_ALBUM_KEY+'_ts') || '0') || Date.now()).toLocaleDateString('zh-CN')}</span>
+                <span class="history-desc">${count} 张照片 · 保存于 ${createdAt}</span>
               </div>
             </a>
           </div>`;
+        }).join('');
+
+        list.querySelectorAll('.history-item-link').forEach(link => {
+          link.onclick = async (event) => {
+            event.preventDefault();
+            const albumId = link.getAttribute('data-album-id') || '';
+            await openUploadedAlbum(albumId, { replace: false });
+          };
+        });
       }
 
       // --- Photo load policy ---
@@ -2830,6 +2896,40 @@
         }
       }
 
+      async function openUploadedAlbum(albumId = '', { replace = false } = {}) {
+        const savedAlbum = loadUploadedAlbum(albumId);
+        if (!savedAlbum) return false;
+
+        albumType = 'uploaded';
+        if (savedAlbum.theme && themes.some(theme => theme.id === savedAlbum.theme)) {
+          currentTheme = savedAlbum.theme;
+          themes.forEach(theme => document.body.classList.remove(`theme-${theme.id}`));
+          document.body.classList.add(`theme-${currentTheme}`);
+        }
+        if (savedAlbum.track && tracks.some(track => track.src === savedAlbum.track)) {
+          currentTrack = savedAlbum.track;
+          bgm.src = currentTrack;
+        }
+        renderThemes();
+        renderMusic();
+
+        historyPanel?.classList.remove('open');
+        editorPanel?.classList.remove('open');
+
+        const newUrl = `${window.location.pathname}?album=uploaded${savedAlbum.id ? `&id=${encodeURIComponent(savedAlbum.id)}` : ''}`;
+        if (replace) {
+          window.history.replaceState({ path: newUrl }, '', newUrl);
+        } else {
+          window.history.pushState({ path: newUrl }, '', newUrl);
+        }
+
+        await enterAlbum(savedAlbum.photos, savedAlbum.title, {
+          force: true,
+          chapters: savedAlbum.chapters
+        });
+        return true;
+      }
+
       async function checkUrlParams() {
         const urlParams = new URLSearchParams(window.location.search);
         albumType = urlParams.get('album') || 'default';
@@ -2909,32 +3009,8 @@
         };
 
         if (albumType === 'uploaded') {
-          const savedAlbum = loadUploadedAlbum();
-          if (savedAlbum) {
-            if (savedAlbum.theme && themes.some(theme => theme.id === savedAlbum.theme)) {
-              currentTheme = savedAlbum.theme;
-              themes.forEach(theme => document.body.classList.remove(`theme-${theme.id}`));
-              document.body.classList.add(`theme-${currentTheme}`);
-            }
-            if (savedAlbum.track && tracks.some(track => track.src === savedAlbum.track)) {
-              currentTrack = savedAlbum.track;
-              bgm.src = currentTrack;
-            }
-            renderThemes();
-            renderMusic();
-            if (!hasPersistedSettings) {
-              await applyLLMRecommendationForAlbum({
-                albumType: 'default',
-                title: savedAlbum.title.replace(/<br\s*\/?>/gi, ' '),
-                photos: savedAlbum.photos,
-                captions: savedAlbum.photos.map(p => p.caption)
-              });
-            }
-            await enterAlbum(savedAlbum.photos, savedAlbum.title, {
-              force: true,
-              chapters: savedAlbum.chapters
-            });
-          } else {
+          const opened = await openUploadedAlbum(urlParams.get('id') || '', { replace: true });
+          if (!opened) {
             albumType = 'default';
             window.history.replaceState({}, '', window.location.pathname);
           }
@@ -3023,9 +3099,9 @@
       }
 
       async function enterAlbum(photos, title, { force = false, chapters = [] } = {}) {
-        const displayPhotos = await prepareAlbumPhotosForDisplay(photos);
         // 1) 强力预加载：确保图片在任何重排/3D 变换前已完成 onload（或超时兜底）
         showLoader('📸 正在加载照片...');
+        const displayPhotos = await prepareAlbumPhotosForDisplay(photos);
         await preloadAlbumPhotos(displayPhotos, { overallTimeoutMs: 30000, perImageTimeoutMs: 12000 });
 
         // 2) 生成 DOM（仅在必要时）
@@ -3107,10 +3183,11 @@
             captions: photoData.map(p => p.caption)
           });
 
-          if (persistUploadedAlbum(photoData, albumTitle, chapters)) {
+          const albumId = persistUploadedAlbum(photoData, albumTitle, chapters);
+          if (albumId) {
             renderHistoryList();
             albumType = 'uploaded';
-            const newUrl = `${window.location.pathname}?album=uploaded`;
+            const newUrl = `${window.location.pathname}?album=uploaded&id=${encodeURIComponent(albumId)}`;
             window.history.replaceState({ path: newUrl }, '', newUrl);
           }
 
@@ -3119,13 +3196,13 @@
         } catch (flowError) {
           console.error('[Album] generation failed after upload', flowError);
           const recoveryChapters = chapters.length ? chapters : buildFallbackStoryline(photoData, effectiveAlbumType);
-          let recoverySaved = false;
+          let recoveryAlbumId = '';
           try {
-            recoverySaved = persistUploadedAlbum(photoData, albumTitle, recoveryChapters);
+            recoveryAlbumId = persistUploadedAlbum(photoData, albumTitle, recoveryChapters);
           } catch (recoveryError) {
             console.warn('[Album] recovery draft failed', recoveryError);
           }
-          if (recoverySaved) {
+          if (recoveryAlbumId) {
             showUploadStatus('照片已保存，但相册生成未完成。刷新页面后可以继续查看已保存的照片。', 'error');
           } else {
             await deleteUploadedPhotos(photoData);
