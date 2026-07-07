@@ -2199,13 +2199,19 @@
         ];
       }
 
+      function getStorylineChapterCount(photoCount) {
+        if (photoCount <= 0) return 0;
+        if (photoCount <= 2) return 1;
+        if (photoCount <= 6) return 2;
+        if (photoCount <= 12) return 3;
+        return 4;
+      }
+
       function buildFallbackStoryline(photos, type) {
         const ids = photos.map(photo => String(photo.id || '')).filter(Boolean);
         if (ids.length === 0) return [];
 
-        // Chapter count scales with photo count: ~3-5 photos per chapter
-        let chapterCount = Math.max(1, Math.min(12, Math.round(ids.length / 4)));
-        if (chapterCount === 0) chapterCount = 1;
+        const chapterCount = getStorylineChapterCount(ids.length);
 
         const templates = storylineTemplates(type);
         const chunkSize = Math.ceil(ids.length / chapterCount);

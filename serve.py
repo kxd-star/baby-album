@@ -587,20 +587,24 @@ def storyline_templates(album_type: str | None = "default") -> list[dict[str, st
     ]
 
 
+def storyline_chapter_count(photo_count: int) -> int:
+    if photo_count <= 0:
+        return 0
+    if photo_count <= 2:
+        return 1
+    if photo_count <= 6:
+        return 2
+    if photo_count <= 12:
+        return 3
+    return 4
+
+
 def fallback_storyline(photos: list[StorylinePhoto], album_type: str | None = "default") -> list[dict[str, Any]]:
     photo_ids = [str(photo.id) for photo in photos if photo.id]
     if not photo_ids:
         return []
 
-    if len(photo_ids) == 1:
-        chapter_count = 1
-    elif len(photo_ids) <= 4:
-        chapter_count = 2
-    elif len(photo_ids) <= 9:
-        chapter_count = 3
-    else:
-        chapter_count = 4
-
+    chapter_count = storyline_chapter_count(len(photo_ids))
     templates = storyline_templates(album_type)
     chunk_size = (len(photo_ids) + chapter_count - 1) // chapter_count
     chapters: list[dict[str, Any]] = []
@@ -1048,9 +1052,9 @@ async def generate_storyline(request: Request, data: StorylineRequest):
 
 任务：
 1. 根据照片的视觉风格（色调、场景、氛围）和配文内容，把所有照片分成合理的章节
-2. 每3-5张照片一个章节，照片越多章节越多
+2. 章节数量规则：1-2张照片分1章；3-6张分2章；7-12张分3章；13张以上分4章
 3. 每个章节起一个标题（2-4字）+ 一句话描述
-3. 给每个章节内照片排序，形成叙事节奏
+4. 给每个章节内照片排序，形成叙事节奏
 
 请只返回合法 JSON，不要 Markdown，不要解释。格式如下：
 {{"chapters":[{{"title":"初见","description":"宝宝初来人世的美好瞬间","photo_ids":["p3","p1","p5"]}}]}}

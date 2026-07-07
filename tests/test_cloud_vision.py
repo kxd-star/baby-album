@@ -255,6 +255,21 @@ class UserIsolationTests(unittest.TestCase):
         self.assertEqual(response.json()["mode"], "local")
         self.assertGreaterEqual(len(response.json()["chapters"]), 1)
 
+    def test_storyline_fallback_chapter_count_strategy(self):
+        def photos(count):
+            return [
+                serve.StorylinePhoto(id=f"p{i}", url="", caption=f"photo {i}")
+                for i in range(count)
+            ]
+
+        self.assertEqual(len(serve.fallback_storyline(photos(1), "baby")), 1)
+        self.assertEqual(len(serve.fallback_storyline(photos(2), "baby")), 1)
+        self.assertEqual(len(serve.fallback_storyline(photos(3), "baby")), 2)
+        self.assertEqual(len(serve.fallback_storyline(photos(6), "baby")), 2)
+        self.assertEqual(len(serve.fallback_storyline(photos(7), "baby")), 3)
+        self.assertEqual(len(serve.fallback_storyline(photos(12), "baby")), 3)
+        self.assertEqual(len(serve.fallback_storyline(photos(13), "baby")), 4)
+
     def test_recommendation_falls_back_to_valid_theme_and_track(self):
         async def empty_llm(*args, **kwargs):
             return None
