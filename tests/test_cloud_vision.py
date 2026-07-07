@@ -206,7 +206,7 @@ class UserIsolationTests(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["caption"], "")
+        self.assertEqual(response.json()["caption"], "值得珍藏的美好瞬间")
         self.assertEqual(response.json()["source"], "error")
         self.assertEqual(response.json()["mode"], "none")
 

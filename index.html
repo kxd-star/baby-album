@@ -3199,6 +3199,7 @@
 
       photoUpload.onchange = async (e) => {
         const files = Array.from(e.target.files);
+        photoUpload.value = '';
         if (files.length === 0) return;
         const validation = validateSelectedFiles(files);
         if (validation) {

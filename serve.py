@@ -926,7 +926,7 @@ async def generate_caption_result_for_photo(
             reason="image_unavailable",
             ms=int((time.perf_counter() - started) * 1000),
         )
-        return {"caption": "", "source": "error", "mode": "none"}
+        return {"caption": fallback_caption(album_type), "source": "error", "mode": "none"}
 
     prompt = (
         "你是一位家庭相册配文师。请先准确观察照片中真实可见的内容，"

@@ -4,7 +4,7 @@
  * - Others: stale-while-revalidate
  */
 
-const VERSION = 'v24-2026-07-07-v036-ai-logs';
+const VERSION = 'v24-2026-07-07-v037-review-fixes';
 const SHELL_CACHE = `v24-shell-${VERSION}`;
 const RUNTIME_CACHE = `v24-runtime-${VERSION}`;
 
