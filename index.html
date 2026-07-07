@@ -1357,16 +1357,24 @@
         }
       }
 
-      async function prepareAlbumPhotosForDisplay(photos) {
+      async function prepareAlbumPhotosForDisplay(photos, { maxPrepared = Infinity, perPhotoTimeoutMs = 5000 } = {}) {
         const prepared = Array.isArray(photos) ? photos.map(photo => ({ ...photo })) : [];
+        let preparedCount = 0;
         for (let offset = 0; offset < prepared.length; offset += UPLOAD_BATCH_SIZE) {
           const batch = prepared.slice(offset, offset + UPLOAD_BATCH_SIZE);
           await Promise.all(batch.map(async photo => {
             if (!photo?.persisted || photo.displaySrc || !isProtectedUploadUrl(photo.src)) return;
+            if (preparedCount >= maxPrepared) return;
+            preparedCount += 1;
+            const controller = new AbortController();
+            const timer = Number.isFinite(perPhotoTimeoutMs)
+              ? setTimeout(() => controller.abort(), perPhotoTimeoutMs)
+              : null;
             try {
               const response = await fetch(protectedAssetUrl(photo.src), {
                 credentials: 'include',
-                cache: 'no-store'
+                cache: 'no-store',
+                signal: controller.signal
               });
               if (!response.ok) throw new Error(`HTTP ${response.status}`);
               const blob = await response.blob();
@@ -1375,6 +1383,8 @@
               uploadedObjectUrls.push(photo.displaySrc);
             } catch (error) {
               console.warn('[Album] protected photo could not be prepared', error);
+            } finally {
+              if (timer) clearTimeout(timer);
             }
           }));
         }
@@ -1642,19 +1652,21 @@
       }
 
       // --- Photo load policy ---
-      // 移动端（尤其 iOS + 3D 翻页）对懒加载非常敏感：统一使用最简单的 <img src> 直接加载。
+      // 优先加载前几张，历史相册不再因为整本大图下载而阻塞进入。
       let albumGeneratedOnce = false;
 
-      function buildPhotoMarkup(photo) {
+      function buildPhotoMarkup(photo, eager = false) {
         if (!photo || !photo.src) return '';
         const src = escapeHtml(photo.displaySrc || protectedAssetUrl(photo.src));
         const webp = photo.srcWebp ? escapeHtml(photo.srcWebp) : '';
+        const loading = eager ? 'eager' : 'lazy';
+        const priority = eager ? ' fetchpriority="high"' : '';
 
         if (webp) {
-          return `<div class="photo-container"><picture><source type="image/webp" srcset="${webp}"><img class="album-photo" src="${src}" alt="" loading="eager" decoding="async"></picture></div>`;
+          return `<div class="photo-container"><picture><source type="image/webp" srcset="${webp}"><img class="album-photo" src="${src}" alt="" loading="${loading}" decoding="async"${priority}></picture></div>`;
         }
 
-        return `<div class="photo-container"><img class="album-photo" src="${src}" alt="" loading="eager" decoding="async"></div>`;
+        return `<div class="photo-container"><img class="album-photo" src="${src}" alt="" loading="${loading}" decoding="async"${priority}></div>`;
       }
 
       // localStorage management
@@ -2474,8 +2486,9 @@
         });
       }
 
-      async function preloadAlbumPhotos(photos, { overallTimeoutMs = 15000, perImageTimeoutMs = 8000 } = {}) {
-        const urls = (photos || []).map(pickBestPhotoUrl).filter(Boolean);
+      async function preloadAlbumPhotos(photos, { overallTimeoutMs = 15000, perImageTimeoutMs = 8000, maxPhotos = Infinity } = {}) {
+        const urls = (photos || []).map(pickBestPhotoUrl).filter(Boolean)
+          .slice(0, Number.isFinite(maxPhotos) ? maxPhotos : undefined);
         const total = urls.length;
         if (total === 0) return { total: 0, loaded: 0, failed: 0, timeout: false };
 
@@ -2498,9 +2511,10 @@
         return { total, loaded, failed, timeout };
       }
 
-      async function warmDecodeBookImages({ timeoutMs = 2500 } = {}) {
+      async function warmDecodeBookImages({ timeoutMs = 2500, maxImages = Infinity } = {}) {
         // 进一步确保“下载完成但未解码”时，翻页不会出现短暂白屏
-        const imgs = Array.from(book.querySelectorAll('img'));
+        const imgs = Array.from(book.querySelectorAll('img'))
+          .slice(0, Number.isFinite(maxImages) ? maxImages : undefined);
         if (imgs.length === 0) return;
 
         const decodePromises = imgs.map(img => {
@@ -2542,6 +2556,12 @@
         }
 
         void registerServiceWorker();
+        if (albumType === 'uploaded') {
+          document.body.classList.add('ready');
+          await checkUrlParams();
+          return;
+        }
+
         const tasks = [];
         tasks.push({ name: '预热背景音乐', p: preloadUrl(currentTrack || 'assets/bgm.mp3') });
 
@@ -2600,15 +2620,16 @@
 
       }
 
-      function buildPhotoSide(photo, fallbackCaption) {
+      function buildPhotoSide(photo, fallbackCaption, photoIndex = 0) {
         const captionText = photo.captionSource === 'error'
           ? CAPTION_ERROR_TEXT
           : (photo.caption || fallbackCaption);
+        const eager = photoIndex < 4;
         return {
           className: '',
           content: `
             <div class="content-box">
-              ${buildPhotoMarkup(photo)}
+              ${buildPhotoMarkup(photo, eager)}
               <div class="caption">${escapeHtml(captionText)}</div>
             </div>
           `
@@ -2632,6 +2653,7 @@
         const byId = new Map(photoData.map(photo => [String(photo.id || ''), photo]));
         const used = new Set();
         const sides = [];
+        let photoIndex = 0;
 
         (Array.isArray(chapters) ? chapters : []).forEach((chapter, index) => {
           const chapterPhotos = [];
@@ -2646,12 +2668,18 @@
           if (chapterPhotos.length === 0) return;
 
           sides.push(buildChapterSide(chapter, index));
-          chapterPhotos.forEach(photo => sides.push(buildPhotoSide(photo, '精选瞬间 ✨')));
+          chapterPhotos.forEach(photo => {
+            sides.push(buildPhotoSide(photo, '精选瞬间 ✨', photoIndex));
+            photoIndex += 1;
+          });
         });
 
         photoData.forEach(photo => {
           const id = String(photo.id || '');
-          if (!used.has(id)) sides.push(buildPhotoSide(photo, '温暖回忆 ☀️'));
+          if (!used.has(id)) {
+            sides.push(buildPhotoSide(photo, '温暖回忆 ☀️', photoIndex));
+            photoIndex += 1;
+          }
         });
         return sides;
       }
@@ -2925,7 +2953,8 @@
 
         await enterAlbum(savedAlbum.photos, savedAlbum.title, {
           force: true,
-          chapters: savedAlbum.chapters
+          chapters: savedAlbum.chapters,
+          fast: true
         });
         return true;
       }
@@ -3098,23 +3127,28 @@
         }
       }
 
-      async function enterAlbum(photos, title, { force = false, chapters = [] } = {}) {
-        // 1) 强力预加载：确保图片在任何重排/3D 变换前已完成 onload（或超时兜底）
-        showLoader('📸 正在加载照片...');
-        const displayPhotos = await prepareAlbumPhotosForDisplay(photos);
-        await preloadAlbumPhotos(displayPhotos, { overallTimeoutMs: 30000, perImageTimeoutMs: 12000 });
+      async function enterAlbum(photos, title, { force = false, chapters = [], fast = false } = {}) {
+        showLoader(fast ? '📖 正在打开相册...' : '📸 正在加载照片...');
+        setProgress(6, fast ? '📖 正在打开相册...' : '📸 正在加载照片...');
 
-        // 2) 生成 DOM（仅在必要时）
+        const displayPhotos = await prepareAlbumPhotosForDisplay(photos, {
+          maxPrepared: fast ? 0 : Infinity,
+          perPhotoTimeoutMs: fast ? 1200 : 5000
+        });
+
+        // 生成 DOM（仅在必要时）
         // Once photos are generated and loaded, Theme/Music switching should never rebuild `.book`.
         // Only regenerate when explicitly forced (e.g. user uploads a new set).
         if (!albumGeneratedOnce || force) {
           generateAlbum(displayPhotos, title, chapters);
         }
 
-        // 3) 进一步 warm decode，降低“已下载但未解码”的短暂白屏
-        await warmDecodeBookImages({ timeoutMs: 2500 });
+        if (!fast) {
+          await preloadAlbumPhotos(displayPhotos, { overallTimeoutMs: 12000, perImageTimeoutMs: 5000 });
+          await warmDecodeBookImages({ timeoutMs: 1500 });
+        }
 
-        // 4) 展示相册并适配尺寸
+        // 展示相册并适配尺寸
         uploadContainer.classList.add('hidden');
         albumMain.classList.remove('hidden');
         albumFooter.classList.remove('hidden');
@@ -3124,6 +3158,14 @@
         updateBook();
 
         hideLoader();
+
+        if (fast) {
+          void preloadAlbumPhotos(displayPhotos, {
+            overallTimeoutMs: 4500,
+            perImageTimeoutMs: 2200,
+            maxPhotos: 4
+          }).then(() => warmDecodeBookImages({ timeoutMs: 800, maxImages: 4 }));
+        }
 
         // 进入相册，开始播放音乐（如果是用户操作或已经过初始交互）
         if (currentTrack) {
@@ -3192,7 +3234,7 @@
           }
 
           setProgress(96, '📖 正在生成相册...');
-          await enterAlbum(photoData, albumTitle, { force: true, chapters });
+          await enterAlbum(photoData, albumTitle, { force: true, chapters, fast: true });
         } catch (flowError) {
           console.error('[Album] generation failed after upload', flowError);
           const recoveryChapters = chapters.length ? chapters : buildFallbackStoryline(photoData, effectiveAlbumType);

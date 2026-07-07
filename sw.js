@@ -4,7 +4,7 @@
  * - Others: stale-while-revalidate
  */
 
-const VERSION = 'v24-2026-07-07-v038-history-albums';
+const VERSION = 'v24-2026-07-07-v040-fast-album-entry';
 const SHELL_CACHE = `v24-shell-${VERSION}`;
 const RUNTIME_CACHE = `v24-runtime-${VERSION}`;
 
