@@ -599,8 +599,63 @@ def storyline_chapter_count(photo_count: int) -> int:
     return 4
 
 
+def story_sort_stage(caption: str, album_type: str | None = "default") -> int:
+    text = str(caption or "").lower()
+    opening = (
+        "初见", "第一次", "新生", "满月", "开场", "小小", "脸", "眼神", "望", "看",
+        "特写", "准备", "相遇", "戒指", "婚纱",
+    )
+    action = (
+        "互动", "合影", "牵手", "拥抱", "亲吻", "玩", "抓", "吃", "坐", "爬",
+        "趴", "抬头", "探索", "好奇", "出发", "奔跑", "旅行",
+    )
+    highlight = (
+        "笑", "开心", "快乐", "甜", "阳光", "欢呼", "祝福", "高光", "灿烂",
+        "惊喜", "可爱", "热闹",
+    )
+    closing = (
+        "睡", "安静", "梦", "夜", "月", "休息", "闭眼", "依偎", "背影",
+        "定格", "珍藏", "收尾", "晚安",
+    )
+    if album_type == "baby":
+        opening = opening + ("宝宝", "奶", "小熊", "帽", "趴窝")
+        closing = closing + ("安睡", "摇篮", "困", "哈欠")
+    elif album_type == "wedding":
+        action = action + ("誓言", "敬酒", "花束")
+        closing = closing + ("相守", "余生", "白首")
+
+    if any(word in text for word in closing):
+        return 3
+    if any(word in text for word in highlight):
+        return 2
+    if any(word in text for word in action):
+        return 1
+    if any(word in text for word in opening):
+        return 0
+    return 1
+
+
+def order_storyline_photos(photos: list[StorylinePhoto], album_type: str | None = "default") -> list[StorylinePhoto]:
+    indexed = [
+        (index, photo)
+        for index, photo in enumerate(photos)
+        if photo.id
+    ]
+    return [
+        photo
+        for index, photo in sorted(
+            indexed,
+            key=lambda item: (
+                story_sort_stage(item[1].caption or fallback_caption(album_type), album_type),
+                item[0],
+            ),
+        )
+    ]
+
+
 def fallback_storyline(photos: list[StorylinePhoto], album_type: str | None = "default") -> list[dict[str, Any]]:
-    photo_ids = [str(photo.id) for photo in photos if photo.id]
+    ordered_photos = order_storyline_photos(photos, album_type)
+    photo_ids = [str(photo.id) for photo in ordered_photos if photo.id]
     if not photo_ids:
         return []
 
@@ -1039,10 +1094,11 @@ async def generate_storyline(request: Request, data: StorylineRequest):
 
     compact_photos = [
         {
+            "original_index": index,
             "id": str(photo.id),
             "caption": (photo.caption or fallback_caption(data.albumType)).strip()[:80],
         }
-        for photo in photos
+        for index, photo in enumerate(photos)
     ]
     prompt = f"""你是相册故事线编辑师。
 相册类型: {data.albumType or "default"}，标题: {data.title or ""}
@@ -1051,10 +1107,11 @@ async def generate_storyline(request: Request, data: StorylineRequest):
 {json.dumps(compact_photos, ensure_ascii=False)}
 
 任务：
-1. 根据照片的视觉风格（色调、场景、氛围）和配文内容，把所有照片分成合理的章节
+1. 先根据画面内容和配文重新排序，不要简单沿用 original_index；original_index 只作为无法判断时的参考
 2. 章节数量规则：1-2张照片分1章；3-6张分2章；7-12张分3章；13张以上分4章
-3. 每个章节起一个标题（2-4字）+ 一句话描述
-4. 给每个章节内照片排序，形成叙事节奏
+3. 叙事顺序建议：开场/人物与场景建立 → 互动/动作/探索 → 情绪高点 → 安静收尾/珍藏
+4. 根据排序后的照片分成合理章节，每个章节起一个标题（2-4字）+ 一句话描述
+5. photo_ids 的顺序就是最终展示顺序，必须体现叙事节奏
 
 请只返回合法 JSON，不要 Markdown，不要解释。格式如下：
 {{"chapters":[{{"title":"初见","description":"宝宝初来人世的美好瞬间","photo_ids":["p3","p1","p5"]}}]}}

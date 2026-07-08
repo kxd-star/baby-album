@@ -270,6 +270,23 @@ class UserIsolationTests(unittest.TestCase):
         self.assertEqual(len(serve.fallback_storyline(photos(12), "baby")), 3)
         self.assertEqual(len(serve.fallback_storyline(photos(13), "baby")), 4)
 
+    def test_storyline_fallback_reorders_photos_by_narrative_stage(self):
+        photos = [
+            serve.StorylinePhoto(id="p1", url="", caption="\u5b89\u9759\u7761\u68a6"),
+            serve.StorylinePhoto(id="p2", url="", caption="\u521d\u89c1\u5c0f\u5c0f\u8138"),
+            serve.StorylinePhoto(id="p3", url="", caption="\u5f00\u5fc3\u707f\u70c2\u7b11"),
+            serve.StorylinePhoto(id="p4", url="", caption="\u4e00\u8d77\u4e92\u52a8\u63a2\u7d22"),
+        ]
+
+        chapters = serve.fallback_storyline(photos, "baby")
+        ordered_ids = [
+            photo_id
+            for chapter in chapters
+            for photo_id in chapter["photo_ids"]
+        ]
+
+        self.assertEqual(ordered_ids, ["p2", "p4", "p3", "p1"])
+
     def test_recommendation_falls_back_to_valid_theme_and_track(self):
         async def empty_llm(*args, **kwargs):
             return None

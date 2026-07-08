@@ -2207,8 +2207,40 @@
         return 4;
       }
 
+      function getStorylineSortStage(photo, type) {
+        const text = String(photo?.caption || '').toLowerCase();
+        let opening = ['初见', '第一次', '新生', '满月', '开场', '小小', '脸', '眼神', '望', '看', '特写', '准备', '相遇', '戒指', '婚纱'];
+        let action = ['互动', '合影', '牵手', '拥抱', '亲吻', '玩', '抓', '吃', '坐', '爬', '趴', '抬头', '探索', '好奇', '出发', '奔跑', '旅行'];
+        let highlight = ['笑', '开心', '快乐', '甜', '阳光', '欢呼', '祝福', '高光', '灿烂', '惊喜', '可爱', '热闹'];
+        let closing = ['睡', '安静', '梦', '夜', '月', '休息', '闭眼', '依偎', '背影', '定格', '珍藏', '收尾', '晚安'];
+        if (type === 'baby') {
+          opening = opening.concat(['宝宝', '奶', '小熊', '帽', '趴窝']);
+          closing = closing.concat(['安睡', '摇篮', '困', '哈欠']);
+        } else if (type === 'wedding') {
+          action = action.concat(['誓言', '敬酒', '花束']);
+          closing = closing.concat(['相守', '余生', '白首']);
+        }
+        if (closing.some(word => text.includes(word))) return 3;
+        if (highlight.some(word => text.includes(word))) return 2;
+        if (action.some(word => text.includes(word))) return 1;
+        if (opening.some(word => text.includes(word))) return 0;
+        return 1;
+      }
+
+      function orderPhotosForFallbackStoryline(photos, type) {
+        return photos
+          .map((photo, index) => ({ photo, index }))
+          .filter(item => item.photo && item.photo.id)
+          .sort((a, b) => (
+            getStorylineSortStage(a.photo, type) - getStorylineSortStage(b.photo, type)
+            || a.index - b.index
+          ))
+          .map(item => item.photo);
+      }
+
       function buildFallbackStoryline(photos, type) {
-        const ids = photos.map(photo => String(photo.id || '')).filter(Boolean);
+        const orderedPhotos = orderPhotosForFallbackStoryline(photos, type);
+        const ids = orderedPhotos.map(photo => String(photo.id || '')).filter(Boolean);
         if (ids.length === 0) return [];
 
         const chapterCount = getStorylineChapterCount(ids.length);
