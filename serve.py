@@ -72,6 +72,7 @@ ROOT_DIR = Path(__file__).resolve().parent
 UPLOAD_DIR = ROOT_DIR / "uploads"
 MAX_UPLOAD_BYTES = int(os.environ.get("MAX_UPLOAD_BYTES", str(20 * 1024 * 1024)))
 MAX_UPLOAD_FILES = int(os.environ.get("MAX_UPLOAD_FILES", "30"))
+MAX_USER_UPLOAD_FILES = int(os.environ.get("MAX_USER_UPLOAD_FILES", "300"))
 MAX_UPLOAD_BATCH_FILES = int(os.environ.get("MAX_UPLOAD_BATCH_FILES", "3"))
 MAX_REQUEST_BODY_BYTES = int(os.environ.get(
     "MAX_REQUEST_BODY_BYTES",
@@ -799,10 +800,10 @@ async def upload_photos(
         except Exception as e:
             print("Upload quota check failed:", repr(e))
             raise HTTPException(status_code=503, detail="Upload storage is unavailable") from e
-        if existing_count + len(files) > MAX_UPLOAD_FILES:
+        if existing_count + len(files) > MAX_USER_UPLOAD_FILES:
             raise HTTPException(
                 status_code=409,
-                detail=f"Your cloud album can store at most {MAX_UPLOAD_FILES} photos",
+                detail=f"Your cloud account can store at most {MAX_USER_UPLOAD_FILES} photos",
             )
 
         try:
@@ -1319,6 +1320,7 @@ async def health():
         "sessionSecretConfigured": SESSION_SECRET_CONFIGURED,
         "maxUploadBytes": MAX_UPLOAD_BYTES,
         "maxUploadFiles": MAX_UPLOAD_FILES,
+        "maxUserUploadFiles": MAX_USER_UPLOAD_FILES,
         "maxUploadBatchFiles": MAX_UPLOAD_BATCH_FILES,
         "maxRequestBodyBytes": MAX_REQUEST_BODY_BYTES,
         "warnings": warnings,

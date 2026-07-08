@@ -102,6 +102,7 @@ class UserIsolationTests(unittest.TestCase):
         self.previous_upload_dir = serve.UPLOAD_DIR
         self.previous_call_vision = serve.call_vision_llm
         self.previous_call_llm = serve.call_llm
+        self.previous_max_user_upload_files = serve.MAX_USER_UPLOAD_FILES
         self.temp_dir = tempfile.TemporaryDirectory()
         serve.UPLOAD_DIR = Path(self.temp_dir.name)
         serve._storage = LocalStorage(serve.UPLOAD_DIR)
@@ -111,6 +112,7 @@ class UserIsolationTests(unittest.TestCase):
         serve.UPLOAD_DIR = self.previous_upload_dir
         serve.call_vision_llm = self.previous_call_vision
         serve.call_llm = self.previous_call_llm
+        serve.MAX_USER_UPLOAD_FILES = self.previous_max_user_upload_files
         self.temp_dir.cleanup()
 
     def test_other_user_cannot_read_or_caption_photo(self):
@@ -139,6 +141,26 @@ class UserIsolationTests(unittest.TestCase):
         )
         self.assertEqual(caption.status_code, 200)
         self.assertEqual(calls, [])
+
+    def test_same_user_can_upload_more_than_one_album_limit(self):
+        serve.MAX_USER_UPLOAD_FILES = serve.MAX_UPLOAD_FILES + 3
+        client = TestClient(serve.app)
+
+        for index in range(serve.MAX_UPLOAD_FILES):
+            response = client.post(
+                "/api/upload",
+                files={"files": ("photo.png", make_png(), "image/png")},
+                data={"photo_ids": f"quota{index:04d}"},
+            )
+            self.assertEqual(response.status_code, 200)
+
+        extra = client.post(
+            "/api/upload",
+            files={"files": ("photo.png", make_png(), "image/png")},
+            data={"photo_ids": "quotaextra"},
+        )
+
+        self.assertEqual(extra.status_code, 200)
 
     def test_s3_backed_photo_reaches_vision_model(self):
         calls = []

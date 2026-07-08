@@ -3311,6 +3311,10 @@
           showUploadStatus('请先选择照片。', 'error');
           return;
         }
+        if (allTargetCount > MAX_ALBUM_FILES) {
+          showUploadStatus(`单本相册最多 ${MAX_ALBUM_FILES} 张照片，请减少后再开始制作。`, 'error');
+          return;
+        }
 
         uploadInProgress = true;
         setUploadControlsDisabled(true);
